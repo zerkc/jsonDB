@@ -1,8 +1,39 @@
 import fs from "fs";
+import path from "path";
 import split from "split";
 
 export class JSONDB {
 	lockingTables = {};
+	pathStore = "";
+
+	constructor(pathdb = "./.db/"){
+		this.pathStore = pathdb;
+		if(!fs.existsSync(path.resolve(this.pathStore))){
+			fs.mkdirSync(path.resolve(this.pathStore));
+		}
+	}
+
+	_appendFile(filepath, content, opts = {encoding:"utf8"}){
+		return fs.appendFileSync(path.resolve(this.pathStore, filepath),content,opts);
+	}
+
+	_writeFile(filepath, content, opts = {encoding:"utf8"}){
+		return fs.writeFileSync(path.resolve(this.pathStore, filepath),content,opts);
+	}
+	_existsFile(filepath){
+		return fs.existsSync(path.resolve(this.pathStore,filepath));
+	}
+	_readStream(filepath){
+		return fs.createReadStream(path.resolve(this.pathStore,filepath));
+	}	
+	_deleteFile(filepath){
+		return fs.unlinkSync(path.resolve(this.pathStore,filepath));
+	}
+
+	_renameFile(oldFilePath, newFilePath){
+		return fs.renameSync(path.resolve(this.pathStore,oldFilePath), path.resolve(this.pathStore,newFilePath));
+	}
+
 
 	_generateUUID() {
 		// Public Domain/MIT
@@ -31,8 +62,8 @@ export class JSONDB {
 	}
 
 	async _getTableLock(name) {
-		if (!fs.existsSync(`${name}__lock`)) {
-			fs.writeFileSync(`${name}__lock`, "");
+		if (!this._existsFile(`${name}__lock`)) {
+			this._writeFile(`${name}__lock`, "");
 			return true;
 		}
 		return new Promise((done) => {
@@ -44,8 +75,8 @@ export class JSONDB {
 	}
 
 	async _releaseTableLock(name) {
-		if (fs.existsSync(`${name}__lock`)) {
-			fs.unlinkSync(`${name}__lock`);
+		if (this._existsFile(`${name}__lock`)) {
+			this._deleteFile(`${name}__lock`);
 		}
 		if (this.lockingTables[name]) {
 			for (let d of this.lockingTables[name]) {
@@ -57,7 +88,7 @@ export class JSONDB {
 	async insert(table, data) {
 		await this._getTableLock(table);
 		data._id = this._generateUUID();
-		fs.appendFileSync(table, JSON.stringify(data) + "\n", {
+		this._appendFile(table, JSON.stringify(data) + "\n", {
 			encoding: "utf8",
 		});
 		await this._releaseTableLock(table);
@@ -75,22 +106,22 @@ export class JSONDB {
 		});
 		let lineIndex = 0;
 		if (results.length) {
-			fs.writeFileSync(tmptable, "",{encoding:"utf8"})
+			this._writeFile(tmptable, "",{encoding:"utf8"})
 			await new Promise((done) => {
-				fs.createReadStream(table)
+				this._readStream(table)
 					.pipe(split())
-					.on("data", function (line) {
+					.on("data",  (line) => {
 						let findex = results.findIndex(
 							(r) => r.__i__ == lineIndex
 						);
 						line = line.trim();
 						if (line && findex == -1) {
-							fs.appendFileSync(tmptable, line + "\n", {
+							this._appendFile(tmptable, line + "\n", {
 								encoding: "utf8",
 							});
 						} else if (findex != -1) {
 							line = JSON.parse(line);
-							fs.appendFileSync(
+							this._appendFile(
 								tmptable,
 								JSON.stringify({ ...line, ...data }) + "\n",
 								{ encoding: "utf8" }
@@ -103,8 +134,8 @@ export class JSONDB {
 						done();
 					});
 			});
-			if (fs.existsSync(tmptable)) {
-				fs.renameSync(tmptable, table);
+			if (this._existsFile(tmptable)) {
+				this._renameFile(tmptable, table);
 			}
 		}
 		await this._releaseTableLock(table);
@@ -120,17 +151,17 @@ export class JSONDB {
 		});
 		let lineIndex = 0;
 		if (results.length) {
-			fs.writeFileSync(tmptable, "",{encoding:"utf8"})
+			this._writeFile(tmptable, "",{encoding:"utf8"})
 			await new Promise((done) => {
-				fs.createReadStream(table)
+				this._readStream(table)
 					.pipe(split())
-					.on("data", function (line) {
+					.on("data", (line) => {
 						let findex = results.findIndex(
 							(r) => r.__i__ == lineIndex
 						);
 						line = line.trim();
 						if (line && findex == -1) {
-							fs.appendFileSync(tmptable, line + "\n", {
+							this._appendFile(tmptable, line + "\n", {
 								encoding: "utf8",
 							});
 						}
@@ -141,8 +172,8 @@ export class JSONDB {
 						done();
 					});
 			});
-			if (fs.existsSync(tmptable)) {
-				fs.renameSync(tmptable, table);
+			if (this._existsFile(tmptable)) {
+				this._renameFile(tmptable, table);
 			}
 		}
 		await this._releaseTableLock(table);
@@ -153,10 +184,9 @@ export class JSONDB {
 		return new Promise((d) => {
 			let filtered = [];
 			let lineIndex = 0;
-			let w = fs
-				.createReadStream(table)
+			let w = this._readStream(table)
 				.pipe(split())
-				.on("data", function (line) {
+				.on("data", (line) => {
 					line = line.trim();
 					if (line) {
 						line = JSON.parse(line);

@@ -184,34 +184,39 @@ export class JSONDB {
 		return new Promise((d, reject) => {
 			let filtered = [];
 			let lineIndex = 0;
-			let w = this._readStream(table)
-				.pipe(split())
-				.on("data", (line) => {
-					line = line.trim();
-					if (line) {
-						try{
-							line = JSON.parse(line);
-							if (!filter || filter(line)) {
-								if (extendLine) {
-									line.__i__ = lineIndex;
+			try {
+				let w = this._readStream(table)
+					.pipe(split())
+					.on("data", (line) => {
+						line = line.trim();
+						if (line) {
+							try {
+								line = JSON.parse(line);
+								if (!filter || filter(line)) {
+									if (extendLine) {
+										line.__i__ = lineIndex;
+									}
+									filtered.push(line);
+									if (limit && limit == filtered.length) {
+										w.end();
+									}
 								}
-								filtered.push(line);
-								if (limit && limit == filtered.length) {
-									w.end();
-								}
+							} catch (ex) {
+								reject(ex.message);
 							}
-						}catch(ex){
-							reject(ex.message);
 						}
-					}
-					lineIndex++;
-				})
-				.on('error',function(err){
-					reject(`${err}`);
-				})
-				.on("end", function () {
-					d(filtered);
-				});
+						lineIndex++;
+					})
+					.on("error", function (err) {
+						reject(`${err}`);
+					})
+					.on("end", function () {
+						d(filtered);
+					});
+			} catch (ex) {
+				reject(ex.message);
+			}
 		});
+		
 	}
 }

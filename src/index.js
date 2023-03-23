@@ -181,6 +181,9 @@ export class JSONDB {
 
 	find(table, opts = {}) {
 		const { filter, limit, extendLine } = opts;
+		if(!this._existsFile(table)){
+			return Promise.resolve([]);
+		}
 		return new Promise((d, reject) => {
 			let filtered = [];
 			let lineIndex = 0;

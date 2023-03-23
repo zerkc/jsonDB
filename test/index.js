@@ -6,6 +6,10 @@ const db = new JSONDB();
 
 
 async function main() {
+
+  console.log(await db.find("useradsfasdfaas", {}));
+
+
   await db.insert("users", { username: "a", passwd: "a" });
   await db.insert("users", { username: "b", passwd: "b" });
   await db.insert("users", { username: "c", passwd: "c" });

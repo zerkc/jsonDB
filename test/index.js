@@ -18,7 +18,7 @@ async function main() {
   await db.insert("users", { username: "f", passwd: "f" });
   await db.insert("users", { username: "g", passwd: "g" });
 
-  console.log(await db.find("users", {}));
+  console.log(await db.find("users", {filter:(e)=>e.username > "a",limit: 1000}));
 
   await db.update(
     "users",

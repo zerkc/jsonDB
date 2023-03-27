@@ -96,13 +96,14 @@ export class JSONDB {
 	}
 
 	async update(table, opts, data) {
-		const { filter, limit } = opts;
+		const { filter, limit, where } = opts;
 		let tmptable = `##${table}`;
 		await this._getTableLock(table);
 		let results = await this.find(table, {
 			filter,
 			limit,
 			extendLine: true,
+			where
 		});
 		let lineIndex = 0;
 		if (results.length) {
@@ -141,13 +142,14 @@ export class JSONDB {
 		await this._releaseTableLock(table);
 	}
 	async remove(table, opts) {
-		const { filter, limit } = opts;
+		const { filter, limit, where } = opts;
 		let tmptable = `##${table}`;
 		await this._getTableLock(table);
 		let results = await this.find(table, {
 			filter,
 			limit,
 			extendLine: true,
+			where
 		});
 		let lineIndex = 0;
 		if (results.length) {
@@ -179,8 +181,13 @@ export class JSONDB {
 		await this._releaseTableLock(table);
 	}
 
+	async count(table,opts = {}){
+		const results = await this.find(table,opts);
+		return (results || []).length;
+	}
+
 	find(table, opts = {}) {
-		const { filter, limit, extendLine } = opts;
+		const { filter, limit, extendLine, where } = opts;
 		if(!this._existsFile(table)){
 			return Promise.resolve([]);
 		}
@@ -202,6 +209,30 @@ export class JSONDB {
 									filtered.push(line);
 									if (limit && limit == filtered.length) {
 										w.end();
+									}
+								}else if(where){
+									let find = true;
+									for(let k in where){
+										if (where.hasOwnProperty(k)) {
+											if(typeof where[k] == "string"){
+												if(where[k] != line[k]){
+													find = false;
+												}
+											}else if( where[k] instanceof RegExp){
+												if(!where[k].test(line[k])){
+													find = false;
+												}
+											}
+										}
+									}
+									if(find){
+										if (extendLine) {
+											line.__i__ = lineIndex;
+										}
+										filtered.push(line);
+										if (limit && limit == filtered.length) {
+											w.end();
+										}
 									}
 								}
 							} catch (ex) {

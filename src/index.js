@@ -202,7 +202,15 @@ export class JSONDB {
 						if (line) {
 							try {
 								line = JSON.parse(line);
-								if (!filter || filter(line)) {
+								if(!where && !filter){
+									if (extendLine) {
+										line.__i__ = lineIndex;
+									}
+									filtered.push(line);
+									if (limit && limit == filtered.length) {
+										w.end();
+									}
+								} else if (filter && filter(line)) {
 									if (extendLine) {
 										line.__i__ = lineIndex;
 									}
@@ -236,7 +244,8 @@ export class JSONDB {
 									}
 								}
 							} catch (ex) {
-								reject(ex.message);
+								//skip error
+								//reject(ex.message);
 							}
 						}
 						lineIndex++;

@@ -22,7 +22,7 @@ async function main() {
 
   await db.update(
     "users",
-    { filter: (i) => i.username == "a" },
+    { where:{username: "a" }},
     { username: "aa" }
   );
 

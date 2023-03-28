@@ -20,7 +20,7 @@ export class JSONDB {
 		let tables = fs.readdirSync(this.pathStore);
 		for(let table of tables){
 			if(table.startsWith("##") || table.endsWith("__lock")){
-				fs.unlinkSync(table);
+				fs.unlinkSync(path.resolve(this.pathStore,table));
 			}
 		}
 	}

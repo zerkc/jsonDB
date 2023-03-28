@@ -121,7 +121,7 @@ export class JSONDB {
 		if (results.length) {
 			this._writeFile(tmptable, "",{encoding:"utf8"})
 			await new Promise((done) => {
-				this._readStream(table)
+				const w = this._readStream(table)
 					.pipe(split())
 					.on("data",  (line) => {
 						let findex = results.findIndex(
@@ -144,6 +144,10 @@ export class JSONDB {
 						lineIndex++;
 					})
 					.on("end", function () {
+						if(!w.destroyed){
+							w.destroy();
+						}
+
 						done();
 					});
 			});
@@ -167,7 +171,7 @@ export class JSONDB {
 		if (results.length) {
 			this._writeFile(tmptable, "",{encoding:"utf8"})
 			await new Promise((done) => {
-				this._readStream(table)
+				const w = this._readStream(table)
 					.pipe(split())
 					.on("data", (line) => {
 						let findex = results.findIndex(
@@ -183,6 +187,9 @@ export class JSONDB {
 						lineIndex++;
 					})
 					.on("end", function () {
+						if(!w.destroyed){
+							w.destroy();
+						}
 						done();
 					});
 			});
@@ -266,6 +273,9 @@ export class JSONDB {
 						reject(`${err}`);
 					})
 					.on("end", function () {
+						if(!w.destroyed){
+							w.destroy();
+						}
 						d(filtered);
 					});
 			} catch (ex) {

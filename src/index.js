@@ -6,10 +6,22 @@ export class JSONDB {
 	lockingTables = {};
 	pathStore = "";
 
-	constructor(pathdb = "./.db/"){
+	constructor(pathdb = "./.db/", opts = {autoRemoveLock: true}){
 		this.pathStore = pathdb;
 		if(!fs.existsSync(path.resolve(this.pathStore))){
 			fs.mkdirSync(path.resolve(this.pathStore));
+		}
+		if(opts.autoRemoveLock){
+			this.removeLockings();
+		}
+	}
+
+	removeLockings(){
+		let tables = fs.readdirSync(this.pathStore);
+		for(let table of tables){
+			if(table.startsWith("##") || table.endsWith("__lock")){
+				fs.unlinkSync(table);
+			}
 		}
 	}
 

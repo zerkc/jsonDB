@@ -2,48 +2,76 @@ import fs from "fs";
 import path from "path";
 import split from "split";
 
+function promisify(fun) {
+    return function (...args) {
+        return new Promise((resolve, reject) => {
+            fun.apply(fun, [].concat(args, (err, res) => (err) ? reject(err) : resolve(res)))
+        })
+    }
+}
+
+fs.appendFileAsync = promisify(fs.appendFile);
+fs.readdirAsync = promisify(fs.readdir);
+fs.renameAsync = promisify(fs.rename);
+fs.existsAsync = s=>new Promise(r=>fs.stat(s, (e) => r(!e)));
+fs.mkdirAsync = promisify(fs.mkdir);
+fs.statAsync = promisify(fs.stat);
+fs.readFileAsync = promisify(fs.readFile);
+fs.writeFileAsync = promisify(fs.writeFile);
+fs.unlinkAsync = promisify(fs.unlink);
+fs.rmDirAsync = promisify(fs.rmdir);
+
+
+
 export class JSONDB {
+	opts = {};
 	lockingTables = {};
 	pathStore = "";
 
 	constructor(pathdb = "./.db/", opts = {autoRemoveLock: true}){
 		this.pathStore = pathdb;
-		if(!fs.existsSync(path.resolve(this.pathStore))){
-			fs.mkdirSync(path.resolve(this.pathStore));
+		this.opts = {...opts, opts};
+		this._init();	
+
+	}
+
+	async _init(){
+		if(!await fs.existsAsync(path.resolve(this.pathStore))){
+			await fs.mkdirAsync(path.resolve(this.pathStore));
 		}
-		if(opts.autoRemoveLock){
-			this.removeLockings();
+		if(this.opts.autoRemoveLock){
+			await this.removeLockings();
 		}
 	}
 
-	removeLockings(){
-		let tables = fs.readdirSync(this.pathStore);
+	async removeLockings(){
+		let tables = await fs.readdirAsync(this.pathStore);
 		for(let table of tables){
 			if(table.startsWith("##") || table.endsWith("__lock")){
-				fs.unlinkSync(path.resolve(this.pathStore,table));
+				await fs.unlinkAsync(path.resolve(this.pathStore,table));
 			}
 		}
 	}
 
 	_appendFile(filepath, content, opts = {encoding:"utf8"}){
-		return fs.appendFileSync(path.resolve(this.pathStore, filepath),content,opts);
+		return fs.appendFileAsync(path.resolve(this.pathStore, filepath),content,opts);
 	}
 
 	_writeFile(filepath, content, opts = {encoding:"utf8"}){
-		return fs.writeFileSync(path.resolve(this.pathStore, filepath),content,opts);
+		return fs.writeFileAsync(path.resolve(this.pathStore, filepath),content,opts);
 	}
 	_existsFile(filepath){
-		return fs.existsSync(path.resolve(this.pathStore,filepath));
+		return fs.existsAsync(path.resolve(this.pathStore,filepath));
 	}
 	_readStream(filepath){
 		return fs.createReadStream(path.resolve(this.pathStore,filepath));
 	}	
 	_deleteFile(filepath){
-		return fs.unlinkSync(path.resolve(this.pathStore,filepath));
+		return fs.unlinkAsync(path.resolve(this.pathStore,filepath));
 	}
 
 	_renameFile(oldFilePath, newFilePath){
-		return fs.renameSync(path.resolve(this.pathStore,oldFilePath), path.resolve(this.pathStore,newFilePath));
+		return fs.renameAsync(path.resolve(this.pathStore,oldFilePath), path.resolve(this.pathStore,newFilePath));
 	}
 
 

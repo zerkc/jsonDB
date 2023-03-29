@@ -20,6 +20,7 @@ fs.readFileAsync = promisify(fs.readFile);
 fs.writeFileAsync = promisify(fs.writeFile);
 fs.unlinkAsync = promisify(fs.unlink);
 fs.rmDirAsync = promisify(fs.rmdir);
+fs.copyFileAsync = promisify(fs.copyFile);
 
 
 
@@ -70,9 +71,13 @@ export class JSONDB {
 		return fs.unlinkAsync(path.resolve(this.pathStore,filepath));
 	}
 
-	_renameFile(oldFilePath, newFilePath){
+	async _renameFile(oldFilePath, newFilePath){
+		await fs.copyFileAsync(path.resolve(this.pathStore,oldFilePath), path.resolve(this.pathStore,newFilePath));
+
+		return;
 		return fs.renameAsync(path.resolve(this.pathStore,oldFilePath), path.resolve(this.pathStore,newFilePath));
 	}
+
 
 
 	_generateUUID() {

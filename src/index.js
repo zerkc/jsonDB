@@ -28,6 +28,8 @@ export class JSONDB {
 	opts = {};
 	lockingTables = {};
 	pathStore = "";
+	tableDefinition = {};
+
 
 	constructor(pathdb = "./.db/", opts = {autoRemoveLock: true}){
 		this.pathStore = pathdb;
@@ -40,18 +42,52 @@ export class JSONDB {
 		if(!await fs.existsAsync(path.resolve(this.pathStore))){
 			await fs.mkdirAsync(path.resolve(this.pathStore));
 		}
-		if(this.opts.autoRemoveLock){
-			await this.removeLockings();
+		if(await fs.existsAsync(path.resolve(this.pathStore,"_tables_"))){
+			try{
+				this.tableDefinition = JSON.parse(fs.readFileAsync(path.resolve(this.pathStore,"_tables_")));
+			}catch(ex){
+
+			}
 		}
 	}
 
-	async removeLockings(){
-		let tables = await fs.readdirAsync(this.pathStore);
-		for(let table of tables){
-			if(table.startsWith("##") || table.endsWith("__lock")){
-				await fs.unlinkAsync(path.resolve(this.pathStore,table));
+	async getRealTable(name){
+		if(!this.tableDefinition[name]){
+			this.tableDefinition[name] = {
+				name: this._generateUUID()
+			};
+			await this._updateTableDefinition();
+		}
+		return this.tableDefinition[name].name
+	}
+
+	async getNewNameTable(name){
+		if(!this.tableDefinition[name]){
+			this.tableDefinition[name] = {
+				name: this._generateUUID()
+			};
+		}
+		this.tableDefinition[name].newName = this._generateUUID();
+		await this._updateTableDefinition();
+		return this.tableDefinition[name].newName;
+	}
+
+	async tableDefinitionSync(){
+		let canWritePending =false;
+		for(let k in this.tableDefinition){
+
+			if(this.tableDefinition[k].newName){
+				canWritePending = true;
+				this.tableDefinition[k].name = this.tableDefinition[k].newName;
 			}
 		}
+		if(canWritePending){
+			await this._updateTableDefinition();
+		}
+	}
+	
+	async _updateTableDefinition(){
+		await fs.writeFileAsync(path.resolve(this.pathStore,"_tables_"),JSON.stringify(this.tableDefinition));
 	}
 
 	_appendFile(filepath, content, opts = {encoding:"utf8"}){
@@ -108,33 +144,29 @@ export class JSONDB {
 	}
 
 	async _getTableLock(name) {
-		if (!await this._existsFile(`${name}__lock`)) {
-			await this._writeFile(`${name}__lock`, "");
+		if (this.lockingTables[name] === undefined) {
+			this.lockingTables[name] = [];
 			return true;
 		}
 		return await new Promise((done) => {
-			if (!this.lockingTables[name]) {
-				this.lockingTables[name] = [];
-			}
 			this.lockingTables[name].push(done);
 		});
 	}
 
 	async _releaseTableLock(name) {
-		if (await this._existsFile(`${name}__lock`)) {
-			await this._deleteFile(`${name}__lock`);
-		}
 		if (this.lockingTables[name]) {
 			for (let d of this.lockingTables[name]) {
 				await d();
 			}
+			delete this.lockingTables[name];
 		}
 	}
 
 	async insert(table, data) {
 		await this._getTableLock(table);
+		let _table = await this.getRealTable(table);
 		data._id = this._generateUUID();
-		await this._appendFile(table, JSON.stringify(data) + "\n", {
+		await this._appendFile(_table, JSON.stringify(data) + "\n", {
 			encoding: "utf8",
 		});
 		await this._releaseTableLock(table);
@@ -143,8 +175,8 @@ export class JSONDB {
 
 	async update(table, opts, data) {
 		const { filter, limit, where } = opts;
-		let tmptable = `##${table}`;
 		await this._getTableLock(table);
+		let _table = await this.getRealTable(table);
 		let results = await this.find(table, {
 			filter,
 			limit,
@@ -153,9 +185,10 @@ export class JSONDB {
 		});
 		let lineIndex = 0;
 		if (results.length) {
+			let tmptable = await this.getNewNameTable(table);
 			await this._writeFile(tmptable, "",{encoding:"utf8"})
 			await new Promise((done) => {
-				const w = this._readStream(table)
+				const w = this._readStream(_table)
 					.pipe(split())
 					.on("data",  (line) => {
 						let findex = results.findIndex(
@@ -185,16 +218,14 @@ export class JSONDB {
 						done();
 					});
 			});
-			if (await this._existsFile(tmptable)) {
-				await this._renameFile(tmptable, table);
-			}
 		}
+		await this.tableDefinitionSync();
 		await this._releaseTableLock(table);
 	}
 	async remove(table, opts) {
 		const { filter, limit, where } = opts;
-		let tmptable = `##${table}`;
 		await this._getTableLock(table);
+		let _table = await this.getRealTable(table);
 		let results = await this.find(table, {
 			filter,
 			limit,
@@ -203,9 +234,10 @@ export class JSONDB {
 		});
 		let lineIndex = 0;
 		if (results.length) {
+			let tmptable = await this.getNewNameTable(table);
 			await this._writeFile(tmptable, "",{encoding:"utf8"})
 			await new Promise((done) => {
-				const w = this._readStream(table)
+				const w = this._readStream(_table)
 					.pipe(split())
 					.on("data", (line) => {
 						let findex = results.findIndex(
@@ -227,10 +259,8 @@ export class JSONDB {
 						done();
 					});
 			});
-			if (await this._existsFile(tmptable)) {
-				await this._renameFile(tmptable, table);
-			}
 		}
+		await this.tableDefinitionSync();
 		await this._releaseTableLock(table);
 	}
 
@@ -240,6 +270,7 @@ export class JSONDB {
 	}
 
 	async find(table, opts = {}) {
+		table = await this.getRealTable(table);
 		const { filter, limit, extendLine, where } = opts;
 		if(!await this._existsFile(table)){
 			return [];

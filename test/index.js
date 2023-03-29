@@ -26,6 +26,10 @@ async function main() {
 
 	console.log(await db.find("users", {}));
 
+	await db.remove("users", { filter: (i) => i.username == "d" });
+
+	console.log(await db.find("users", {}));
+
 	await db.remove("users", {});
 }
 

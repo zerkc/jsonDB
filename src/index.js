@@ -102,11 +102,11 @@ export class JSONDB {
 	}
 
 	async _getTableLock(name) {
-		if (!this._existsFile(`${name}__lock`)) {
-			this._writeFile(`${name}__lock`, "");
+		if (!await this._existsFile(`${name}__lock`)) {
+			await this._writeFile(`${name}__lock`, "");
 			return true;
 		}
-		return new Promise((done) => {
+		return await new Promise((done) => {
 			if (!this.lockingTables[name]) {
 				this.lockingTables[name] = [];
 			}
@@ -115,8 +115,8 @@ export class JSONDB {
 	}
 
 	async _releaseTableLock(name) {
-		if (this._existsFile(`${name}__lock`)) {
-			this._deleteFile(`${name}__lock`);
+		if (await this._existsFile(`${name}__lock`)) {
+			await this._deleteFile(`${name}__lock`);
 		}
 		if (this.lockingTables[name]) {
 			for (let d of this.lockingTables[name]) {
@@ -128,7 +128,7 @@ export class JSONDB {
 	async insert(table, data) {
 		await this._getTableLock(table);
 		data._id = this._generateUUID();
-		this._appendFile(table, JSON.stringify(data) + "\n", {
+		await this._appendFile(table, JSON.stringify(data) + "\n", {
 			encoding: "utf8",
 		});
 		await this._releaseTableLock(table);
@@ -147,7 +147,7 @@ export class JSONDB {
 		});
 		let lineIndex = 0;
 		if (results.length) {
-			this._writeFile(tmptable, "",{encoding:"utf8"})
+			await this._writeFile(tmptable, "",{encoding:"utf8"})
 			await new Promise((done) => {
 				const w = this._readStream(table)
 					.pipe(split())
@@ -179,8 +179,8 @@ export class JSONDB {
 						done();
 					});
 			});
-			if (this._existsFile(tmptable)) {
-				this._renameFile(tmptable, table);
+			if (await this._existsFile(tmptable)) {
+				await this._renameFile(tmptable, table);
 			}
 		}
 		await this._releaseTableLock(table);
@@ -197,7 +197,7 @@ export class JSONDB {
 		});
 		let lineIndex = 0;
 		if (results.length) {
-			this._writeFile(tmptable, "",{encoding:"utf8"})
+			await this._writeFile(tmptable, "",{encoding:"utf8"})
 			await new Promise((done) => {
 				const w = this._readStream(table)
 					.pipe(split())
@@ -221,8 +221,8 @@ export class JSONDB {
 						done();
 					});
 			});
-			if (this._existsFile(tmptable)) {
-				this._renameFile(tmptable, table);
+			if (await this._existsFile(tmptable)) {
+				await this._renameFile(tmptable, table);
 			}
 		}
 		await this._releaseTableLock(table);
@@ -233,12 +233,12 @@ export class JSONDB {
 		return (results || []).length;
 	}
 
-	find(table, opts = {}) {
+	async find(table, opts = {}) {
 		const { filter, limit, extendLine, where } = opts;
-		if(!this._existsFile(table)){
+		if(!await this._existsFile(table)){
 			return [];
 		}
-		return new Promise((d, reject) => {
+		return await new Promise((d, reject) => {
 			let filtered = [];
 			let lineIndex = 0;
 			try {

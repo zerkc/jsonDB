@@ -29,13 +29,15 @@ export class JSONDB {
 	lockingTables = {};
 	pathStore = "";
 	tableDefinition = {};
+	inMemory = {};
 
 
-	constructor(pathdb = "./.db/", opts = {autoRemoveLock: true}){
+
+	constructor(pathdb = "./.db/", opts = {autoRemoveLock: true, transactionWrite: false, writeTime: 60000, keepInRam: false}){
 		this.pathStore = pathdb;
 		this.opts = {...opts, opts};
+			
 		this._init();	
-
 	}
 
 	async _init(){
@@ -44,11 +46,81 @@ export class JSONDB {
 		}
 		if(await fs.existsAsync(path.resolve(this.pathStore,"_tables_"))){
 			try{
-				this.tableDefinition = JSON.parse(fs.readFileAsync(path.resolve(this.pathStore,"_tables_")));
+				this.tableDefinition = JSON.parse(await fs.readFileAsync(path.resolve(this.pathStore,"_tables_"),{encoding:"utf8"}));
 			}catch(ex){
-
 			}
 		}
+		if(this.opts.transactionWrite){
+			this.keepInRam = true;
+			this.startWrites();
+		}
+		if(this.opts.keepInRam){
+			for(let k in this.tableDefinition){
+				await this.loadTableInRam(k);
+			}
+		}
+		if(this.loaded){
+			this.loaded();
+		}else{
+			this.loaded = Promise.resolve();
+		}
+	}
+
+	WaitForLoaded(){
+		if(this.loaded){
+			return;
+		}
+		return new Promise(d=>{
+			this.loaded = d;
+		})
+	}
+
+	async loadTableInRam(table){
+		let rtable = await this.getRealTable(table);
+		let memory = this._getTableMemory(table);
+		return new Promise((done) => {
+			let w = this._readStream(rtable)
+				.pipe(split())
+				.on("data", (line) => {
+					line = line.trim();
+					if (line) {
+						try {
+							line = JSON.parse(line);
+							memory.rows.push(line);
+						} catch (ex) {}
+					}
+				})
+				.on("error", function (err) {
+					console.log(`ERROR: ${err}`);
+				})
+				.on("end", function () {
+					if (!w.destroyed) {
+						w.destroy();
+					}
+					done();
+				});
+		});	
+	}
+
+	async startWrites(){
+
+		if(this.tableDefinition["#update"]){
+			delete this.tableDefinition["#update"];
+			await fs.writeFileAsync(path.resolve(this.pathStore,"_tables_"),JSON.stringify(this.tableDefinition));
+		}
+
+		for(let tableName in this.inMemory){
+			let table = this.inMemory[tableName];
+			if(table.hasChange){
+				let rTableName = await this.getRealTable(tableName);
+				await this._writeFile(rTableName, "");
+				for(let row of table.rows){
+					await this._appendFile(rTableName, `${JSON.stringify(row)}\n`)
+				}
+			}
+		}
+
+		setTimeout(()=>this.startWrites(),this.opts.writeTime);
 	}
 
 	async getRealTable(name){
@@ -67,9 +139,8 @@ export class JSONDB {
 				name: this._generateUUID()
 			};
 		}
-		this.tableDefinition[name].newName = this._generateUUID();
 		await this._updateTableDefinition();
-		return this.tableDefinition[name].newName;
+		return this.tableDefinition[name].name;
 	}
 
 	async tableDefinitionSync(){
@@ -78,6 +149,7 @@ export class JSONDB {
 
 			if(this.tableDefinition[k].newName){
 				canWritePending = true;
+				this.tableDefinition[k].oldName = this.tableDefinition[k].name;
 				this.tableDefinition[k].name = this.tableDefinition[k].newName;
 			}
 		}
@@ -87,7 +159,11 @@ export class JSONDB {
 	}
 	
 	async _updateTableDefinition(){
-		await fs.writeFileAsync(path.resolve(this.pathStore,"_tables_"),JSON.stringify(this.tableDefinition));
+		if(this.opts.keepInRam){
+			this.tableDefinition["#update"] = true;
+		}else{
+			await fs.writeFileAsync(path.resolve(this.pathStore,"_tables_"),JSON.stringify(this.tableDefinition));
+		}
 	}
 
 	_appendFile(filepath, content, opts = {encoding:"utf8"}){
@@ -162,18 +238,34 @@ export class JSONDB {
 		}
 	}
 
+	_getTableMemory(table){
+		if(!this.inMemory[table]){
+			this.inMemory[table] = {
+				rows:[]
+			};
+		}
+		return this.inMemory[table];
+	}
+
 	async insert(table, data) {
+		await this.WaitForLoaded();
 		await this._getTableLock(table);
 		let _table = await this.getRealTable(table);
 		data._id = this._generateUUID();
-		await this._appendFile(_table, JSON.stringify(data) + "\n", {
-			encoding: "utf8",
-		});
+		if(this.opts.keepInRam){
+			let memory = this._getTableMemory(table);
+			memory.rows.push(data);
+		}else{
+			await this._appendFile(_table, JSON.stringify(data) + "\n", {
+				encoding: "utf8",
+			});
+		}
 		await this._releaseTableLock(table);
 		return data._id
 	}
 
 	async update(table, opts, data) {
+		await this.WaitForLoaded();
 		const { filter, limit, where } = opts;
 		await this._getTableLock(table);
 		let _table = await this.getRealTable(table);
@@ -184,6 +276,23 @@ export class JSONDB {
 			where
 		});
 		let lineIndex = 0;
+		if(this.opts.keepInRam){
+			let memory = this._getTableMemory(table);
+			if(results.length){
+				memory.hasChange = true;
+				for(let r of results){
+					memory.rows[r.__i__] = {
+						...memory.rows[r.__i__],
+						...data,
+						__i__:undefined
+					};
+				
+				}
+			}
+
+			await this._releaseTableLock(table);
+			return;
+		}
 		if (results.length) {
 			let tmptable = await this.getNewNameTable(table);
 			await this._writeFile(tmptable, "",{encoding:"utf8"})
@@ -211,10 +320,11 @@ export class JSONDB {
 						lineIndex++;
 					})
 					.on("end", function () {
+						/*
 						if(!w.destroyed){
 							w.destroy();
 						}
-
+						*/
 						done();
 					});
 			});
@@ -223,6 +333,7 @@ export class JSONDB {
 		await this._releaseTableLock(table);
 	}
 	async remove(table, opts) {
+		await this.WaitForLoaded();
 		const { filter, limit, where } = opts;
 		await this._getTableLock(table);
 		let _table = await this.getRealTable(table);
@@ -233,6 +344,19 @@ export class JSONDB {
 			where
 		});
 		let lineIndex = 0;
+		if(this.opts.keepInRam){
+			let memory = this._getTableMemory(table);
+			if(results.length){
+				results.sort((a,b)=>b.__i__-a.__i__)
+				memory.hasChange = true;
+				for(let r of results){
+					memory.rows.splice(r.__i__,1);
+				}
+			}
+
+			await this._releaseTableLock(table);
+			return;
+		}
 		if (results.length) {
 			let tmptable = await this.getNewNameTable(table);
 			await this._writeFile(tmptable, "",{encoding:"utf8"})
@@ -253,9 +377,11 @@ export class JSONDB {
 						lineIndex++;
 					})
 					.on("end", function () {
+						/*
 						if(!w.destroyed){
 							w.destroy();
 						}
+						*/
 						done();
 					});
 			});
@@ -270,8 +396,60 @@ export class JSONDB {
 	}
 
 	async find(table, opts = {}) {
-		table = await this.getRealTable(table);
+		await this.WaitForLoaded();
 		const { filter, limit, extendLine, where } = opts;
+		if(this.opts.keepInRam){
+			let results = [];
+			let memory = this._getTableMemory(table);
+			let lineIndex = 0;
+			for(let line of memory.rows){
+				if (!where && !filter) {
+					if (extendLine) {
+						line.__i__ = lineIndex;
+					}
+					results.push(line);
+					if (limit && limit == results.length) {
+						return;
+					}
+				} else if (filter && filter(line)) {
+					if (extendLine) {
+						line.__i__ = lineIndex;
+					}
+					results.push(line);
+					if (limit && limit == results.length) {
+						return;
+					}
+				} else if (where) {
+					let find = true;
+					for (let k in where) {
+						if (where.hasOwnProperty(k)) {
+							if (typeof where[k] == "string") {
+								if (where[k] != line[k]) {
+									find = false;
+								}
+							} else if (where[k] instanceof RegExp) {
+								if (!where[k].test(line[k])) {
+									find = false;
+								}
+							}
+						}
+					}
+					if (find) {
+						if (extendLine) {
+							line.__i__ = lineIndex;
+						}
+						results.push(line);
+						if (limit && limit == results.length) {
+							return;
+						}
+					}
+				}
+				lineIndex++;
+			}
+
+			return results;
+		}
+		table = await this.getRealTable(table);
 		if(!await this._existsFile(table)){
 			return [];
 		}
@@ -338,9 +516,11 @@ export class JSONDB {
 						reject(`${err}`);
 					})
 					.on("end", function () {
+						/*
 						if(!w.destroyed){
 							w.destroy();
 						}
+						*/
 						d(filtered);
 					});
 			} catch (ex) {

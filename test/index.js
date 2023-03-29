@@ -1,6 +1,6 @@
 import { JSONDB } from "../src/index.js";
 
-const db = new JSONDB();
+const db = new JSONDB(undefined,{keepInRam:true, transactionWrite:true, writeTime: 5000});
 
 async function main() {
 	console.log(await db.find("useradsfasdfaas", {}));
@@ -30,7 +30,7 @@ async function main() {
 
 	console.log(await db.find("users", {}));
 
-	await db.remove("users", {});
+	//await db.remove("users", {});
 }
 
 main();

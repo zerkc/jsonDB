@@ -72,6 +72,7 @@ export class JSONDB {
 	}
 
 	async _renameFile(oldFilePath, newFilePath){
+		await fs.unlinkAsync(path.resolve(this.pathStore,newFilePath));
 		await fs.copyFileAsync(path.resolve(this.pathStore,oldFilePath), path.resolve(this.pathStore,newFilePath));
 
 		return;

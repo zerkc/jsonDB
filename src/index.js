@@ -77,6 +77,9 @@ export class JSONDB {
 
 	async loadTableInRam(table){
 		let rtable = await this.getRealTable(table);
+		if(!await this._existsFile(rtable)){
+			return;
+		}
 		let memory = this._getTableMemory(table);
 		return new Promise((done) => {
 			let w = this._readStream(rtable)
@@ -254,6 +257,7 @@ export class JSONDB {
 		data._id = this._generateUUID();
 		if(this.opts.keepInRam){
 			let memory = this._getTableMemory(table);
+			memory.hasChange = true;
 			memory.rows.push(data);
 		}else{
 			await this._appendFile(_table, JSON.stringify(data) + "\n", {

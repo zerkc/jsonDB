@@ -223,6 +223,9 @@ export class JSONDB {
 	}
 
 	async _getTableLock(name) {
+		if(this.opts.keepInRam){
+			return true;
+		}
 		if (this.lockingTables[name] === undefined) {
 			this.lockingTables[name] = [];
 			return true;
@@ -413,7 +416,7 @@ export class JSONDB {
 					}
 					results.push(line);
 					if (limit && limit == results.length) {
-						return;
+						break;
 					}
 				} else if (filter && filter(line)) {
 					if (extendLine) {
@@ -421,7 +424,7 @@ export class JSONDB {
 					}
 					results.push(line);
 					if (limit && limit == results.length) {
-						return;
+						break;
 					}
 				} else if (where) {
 					let find = true;
@@ -444,7 +447,7 @@ export class JSONDB {
 						}
 						results.push(line);
 						if (limit && limit == results.length) {
-							return;
+							break;
 						}
 					}
 				}

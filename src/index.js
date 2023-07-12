@@ -117,9 +117,13 @@ export class JSONDB {
 			if(table.hasChange){
 				let rTableName = await this.getRealTable(tableName);
 				await this._writeFile(rTableName, "");
+				
+				let content = "";
 				for(let row of table.rows){
-					await this._appendFile(rTableName, `${JSON.stringify(row)}\n`)
+					content += `${JSON.stringify(row)}\n`;
 				}
+				//await this._appendFile(rTableName, `${JSON.stringify(row)}\n`)
+				await this._writeFile(rTableName, content);
 			}
 		}
 

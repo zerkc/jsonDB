@@ -120,7 +120,9 @@ export class JSONDB {
 					flags: 'w'
 				});
 				for(let row of table.rows){
-					writer.write(`${JSON.stringify(row)}\n`);
+					await new Promise(done=>{
+						writer.write(`${JSON.stringify(row)}\n`, done);
+					})
 					//await this._appendFile(rTableName, `${JSON.stringify(row)}\n`)
 				}
 				writer.close();
@@ -173,16 +175,25 @@ export class JSONDB {
 		}
 	}
 
-	_appendFile(filepath, content, opts = {encoding:"utf8"}){
+	async _appendFile(filepath, content, opts = {encoding:"utf8"}){
 		let writer = fs.createWriteStream(path.resolve(this.pathStore, filepath), {
-					flags: 'w'
+					flags: 'a'
 				});
-		writer.write(content);
+		await new Promise(done => {
+			writer.write(content, done);
+		})
 		writer.close();
 	}
 
-	_writeFile(filepath, content, opts = {encoding:"utf8"}){
-		return fs.writeFileAsync(path.resolve(this.pathStore, filepath),content,opts);
+	async _writeFile(filepath, content, opts = {encoding:"utf8"}){
+		let writer = fs.createWriteStream(path.resolve(this.pathStore, filepath), {
+					flags: 'w'
+				});
+		await new Promise(done => {
+			writer.write(content, done);
+		})
+		writer.close();
+		//return fs.writeFileAsync(path.resolve(this.pathStore, filepath),content,opts);
 	}
 	_existsFile(filepath){
 		return fs.existsAsync(path.resolve(this.pathStore,filepath));

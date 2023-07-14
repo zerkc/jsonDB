@@ -116,14 +116,14 @@ export class JSONDB {
 			let table = this.inMemory[tableName];
 			if(table.hasChange){
 				let rTableName = await this.getRealTable(tableName);
-				await this._writeFile(rTableName, "");
-				
-				let content = "";
+				let writer = fs.createWriteStream(path.resolve(this.pathStore,rTableName), {
+					flags: 'w'
+				});
 				for(let row of table.rows){
-					content += `${JSON.stringify(row)}\n`;
+					writer.write(`${JSON.stringify(row)}\n`);
+					//await this._appendFile(rTableName, `${JSON.stringify(row)}\n`)
 				}
-				//await this._appendFile(rTableName, `${JSON.stringify(row)}\n`)
-				await this._writeFile(rTableName, content);
+				writer.close();
 			}
 		}
 
@@ -174,7 +174,11 @@ export class JSONDB {
 	}
 
 	_appendFile(filepath, content, opts = {encoding:"utf8"}){
-		return fs.appendFileAsync(path.resolve(this.pathStore, filepath),content,opts);
+		let writer = fs.createWriteStream(path.resolve(this.pathStore, filepath), {
+					flags: 'w'
+				});
+		writer.write(content);
+		writer.close();
 	}
 
 	_writeFile(filepath, content, opts = {encoding:"utf8"}){

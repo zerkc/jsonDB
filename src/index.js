@@ -481,10 +481,11 @@ export class JSONDB {
 		if(!await this._existsFile(table)){
 			return [];
 		}
-		return await new Promise((d, reject) => {
+		return await new Promise(async (d, reject) => {
 			let filtered = [];
 			let lineIndex = 0;
 			try {
+				await this._getTableLock(table);
 				let w = this._readStream(table)
 					.pipe(split())
 					.on("data", (line) => {
@@ -554,6 +555,7 @@ export class JSONDB {
 			} catch (ex) {
 				reject(ex.message);
 			}
+			await this._releaseTableLock(table);
 		});
 		
 	}

@@ -113,6 +113,7 @@ export class JSONDB {
 		}
 
 		for(let tableName in this.inMemory){
+			await this._getTableLock(tableName);
 			let table = this.inMemory[tableName];
 			if(table.hasChange){
 				let rTableName = await this.getRealTable(tableName);
@@ -127,6 +128,7 @@ export class JSONDB {
 				}
 				writer.close();
 			}
+			await this._releaseTableLock(tableName);
 		}
 
 		setTimeout(()=>this.startWrites(),this.opts.writeTime);

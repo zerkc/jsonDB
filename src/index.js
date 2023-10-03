@@ -3,17 +3,17 @@ import path from "path";
 import split from "split";
 
 function promisify(fun) {
-    return function (...args) {
-        return new Promise((resolve, reject) => {
-            fun.apply(fun, [].concat(args, (err, res) => (err) ? reject(err) : resolve(res)))
-        })
-    }
+  return function(...args) {
+    return new Promise((resolve, reject) => {
+      fun.apply(fun, [].concat(args, (err, res) => (err) ? reject(err) : resolve(res)))
+    })
+  }
 }
 
 fs.appendFileAsync = promisify(fs.appendFile);
 fs.readdirAsync = promisify(fs.readdir);
 fs.renameAsync = promisify(fs.rename);
-fs.existsAsync = s=>new Promise(r=>fs.stat(s, (e) => r(!e)));
+fs.existsAsync = s => new Promise(r => fs.stat(s, (e) => r(!e)));
 fs.mkdirAsync = promisify(fs.mkdir);
 fs.statAsync = promisify(fs.stat);
 fs.readFileAsync = promisify(fs.readFile);
@@ -23,540 +23,372 @@ fs.rmDirAsync = promisify(fs.rmdir);
 fs.copyFileAsync = promisify(fs.copyFile);
 
 
+class TableController {
+  tableName = "";
+  tableDisk = "";
+  pathdb = "";
+  locked = false;
+  actionsQueue = [];
+  updateTableDiskcb = false;
+
+  constructor(pathdb, tableName, tableDisk = "") {
+    if (!tableDisk) {
+      tableDisk = this._generateUUID();
+    }
+
+    this.pathdb = pathdb;
+    this.tableName = tableName;
+    this.tableDisk = tableDisk;
+  }
+
+  setUpdateEvent(cb) {
+    if (typeof cb == "function") {
+      this.updateTableDiskcb = cb;
+    }
+  }
+
+
+  addActionQueue(action, params) {
+    return new Promise(done => {
+      this.actionsQueue.push({
+        action,
+        params,
+        resolve: done
+      })
+    })
+  }
+
+  async processQueue() {
+    const queue = this.actionsQueue.shift();
+    if (queue) {
+      if (queue.action == "INSERT") {
+        await this.insert(queue.params.data);
+        queue.resolve();
+      } else if (queue.action == "UPDATE") {
+        await this.update(queue.params.options, queue.params.data);
+        queue.resolve();
+      } else if (queue.action == "REMOVE") {
+        await this.remove(queue.params.options);
+        queue.resolve();
+      } else if (queue.action == "FIND") {
+        const results = await this.find(queue.params.options);
+        queue.resolve(results);
+      }
+    }
+  }
+
+  async insert(data = {}) {
+    if (this.locked) {
+      return this.addActionQueue("INSERT", { data });
+    }
+    this.locked = true;
+    if (Array.isArray(data)) {
+      for (const d of data) {
+        await this.insert(d);
+      }
+    } else {
+      data._id = this._generateUUID();
+      const writer = fs.createWriteStream(path.resolve(this.pathdb, this.tableDisk), {
+        flags: 'a'
+      });
+      await new Promise(done => {
+        writer.write(`${JSON.stringify(data)}\n`, done);
+      })
+      writer.close();
+    }
+    this.locked = false;
+    this.processQueue();
+  }
+  updateTableDisk() {
+    this.tableDisk = this._generateUUID();
+    if (this.updateTableDiskcb) {
+      this.updateTableDiskcb(this.tableName, this.tableDisk);
+    }
+  }
+
+  async update(options = {}, data = {}) {
+    if (this.locked) {
+      return this.addActionQueue("UPDATE", { options, data });
+    }
+    this.locked = true;
+    await new Promise(async (done) => {
+      const results = [];
+      if (!fs.existsSync(path.resolve(this.pathdb, this.tableDisk))) {
+        fs.writeFileSync(path.resolve(this.pathdb, this.tableDisk), "")
+      }
+      const reader = fs.createReadStream(path.resolve(this.pathdb, this.tableDisk));
+      this.updateTableDisk();
+      const writer = fs.createWriteStream(path.resolve(this.pathdb, this.tableDisk), {
+        flags: 'w'
+      });
+
+      reader.pipe(split())
+        .on("data", async (line) => {
+          try {
+            let idata = JSON.parse(line);
+            if (this.verifyLineWhere(options, idata)) {
+              idata = { ...idata, ...data };
+            }
+            results.push(await new Promise(done => {
+              writer.write(`${JSON.stringify(idata)}\n`, done);
+            }));
+          } catch (ex) {
+          }
+          if (options.limit) {
+            if (options.limit == results.length) {
+              reader.close();
+            }
+          }
+        })
+        .on('error', console.error)
+        .on('close', async () => {
+          if (await Promise.all(results)) {
+            await fs.unlinkAsync(reader.path)
+            done(results);
+          }
+        });
+    })
+
+    this.locked = false;
+    this.processQueue();
+  }
+
+  async remove(options) {
+    if (this.locked) {
+      return this.addActionQueue("REMOVE", { options });
+    }
+    this.locked = true;
+    await new Promise((done) => {
+      const results = [];
+      if (!fs.existsSync(path.resolve(this.pathdb, this.tableDisk))) {
+        fs.writeFileSync(path.resolve(this.pathdb, this.tableDisk), "")
+      }
+      const reader = fs.createReadStream(path.resolve(this.pathdb, this.tableDisk));
+      this.updateTableDisk();
+      const writer = fs.createWriteStream(path.resolve(this.pathdb, this.tableDisk), {
+        flags: 'w'
+      });
+
+      reader.pipe(split())
+        .on("data", async (line) => {
+          try {
+            let data = JSON.parse(line);
+            if (!this.verifyLineWhere(options, data)) {
+              results.push(await new Promise(done => {
+                writer.write(`${JSON.stringify(data)}\n`, done);
+              }));
+            }
+          } catch (ex) {
+          }
+          if (options.limit) {
+            if (options.limit == results.length) {
+              reader.close();
+            }
+          }
+        })
+        .on('error', console.error)
+        .on('close', async () => {
+          if (await Promise.all(results)) {
+            await fs.unlinkAsync(reader.path)
+            done(results);
+          }
+        });
+    })
+    this.locked = false;
+    this.processQueue();
+  }
+
+
+  async find(options = {}) {
+    if (this.locked) {
+      return this.addActionQueue("FIND", { options });
+    }
+    this.locked = true;
+
+
+    const response = await new Promise((done) => {
+      const results = [];
+      if (!fs.existsSync(path.resolve(this.pathdb, this.tableDisk))) {
+        fs.writeFileSync(path.resolve(this.pathdb, this.tableDisk), "")
+      }
+      const reader = fs.createReadStream(path.resolve(this.pathdb, this.tableDisk));
+      reader.pipe(split())
+        .on("data", (line) => {
+          try {
+            let data = JSON.parse(line);
+            if (this.verifyLineWhere(options, data)) {
+              results.push(data);
+            }
+          } catch (ex) {
+          }
+          if (options.limit) {
+            if (options.limit == results.length) {
+              reader.close();
+            }
+          }
+        })
+        .on('error', console.error)
+        .on('close', () => {
+          done(results);
+        });
+    })
+
+    this.locked = false;
+    this.processQueue();
+    return response;
+  }
+
+  async count(options = {}) {
+    const results = await this.find(options);
+    return results.length;
+  }
+
+
+  verifyLineWhere(options, data) {
+    if (options.where) {
+      for (let k in options.where) {
+        if (options.where.hasOwnProperty(k)) {
+          if (options.where[k] instanceof RegExp) {
+            if (options.where[k].test(data[k])) {
+              return true;
+            }
+          } else {
+            if (data[k] == options.where[k]) {
+              return true;
+            }
+          }
+          return false;
+        }
+      }
+    } else if (options.filter) {
+      return options.filter(data);
+    } else {
+      return true;
+    }
+
+    return false
+  }
+
+
+  _generateUUID() {
+    // Public Domain/MIT
+    var d = new Date().getTime(); //Timestamp
+    var d2 =
+      (typeof performance !== "undefined" &&
+        performance.now &&
+        performance.now() * 1000) ||
+      0; //Time in microseconds since page-load or 0 if unsupported
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+      /[xy]/g,
+      function(c) {
+        var r = Math.random() * 16; //random number between 0 and 16
+        if (d > 0) {
+          //Use timestamp until depleted
+          r = (d + r) % 16 | 0;
+          d = Math.floor(d / 16);
+        } else {
+          //Use microseconds since page-load if supported
+          r = (d2 + r) % 16 | 0;
+          d2 = Math.floor(d2 / 16);
+        }
+        return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+      }
+    );
+  }
+}
+
+
 
 export class JSONDB {
-	opts = {};
-	lockingTables = {};
-	pathStore = "";
-	tableDefinition = {};
-	inMemory = {};
+  opts = {};
+  pathStore = "";
+  tableDefinition = {};
+  tableInstances = {};
+
+  constructor(pathdb = "./.db/", opts = {}) {
+    this.pathStore = pathdb;
+    this.opts = { ...opts, opts };
+    this.loaded = new Promise(done => {
+      this._init(done);
+    })
+
+  }
+
+  async _init(done) {
+    if (!await fs.existsAsync(path.resolve(this.pathStore))) {
+      await fs.mkdirAsync(path.resolve(this.pathStore));
+    }
+    if (await fs.existsAsync(path.resolve(this.pathStore, "_tables_"))) {
+      try {
+        this.tableDefinition = JSON.parse(await fs.readFileAsync(path.resolve(this.pathStore, "_tables_"), { encoding: "utf8" }));
+      } catch (ex) {
+        console.log(ex);
+      }
+    }
+    done();
+  }
+
+  async updateDefinitions() {
+    try {
+      await fs.writeFileAsync(path.resolve(this.pathStore, "_tables_"), JSON.stringify(this.tableDefinition), { encoding: "utf8" });
+    } catch (ex) { }
+  }
 
 
 
-	constructor(pathdb = "./.db/", opts = {autoRemoveLock: true, transactionWrite: false, writeTime: 60000, keepInRam: false}){
-		this.pathStore = pathdb;
-		this.opts = {...opts, opts};
-			
-		this._init();	
-	}
+  async getTable(table) {
+    await this.loaded;
+    if (this.tableInstances[table]) {
+      return this.tableInstances[table];
+    }
+    if (this.tableDefinition[table]) {
+      this.tableInstances[table] = new TableController(this.pathStore, table, this.tableDefinition[table].name);
 
-	async _init(){
-		if(!await fs.existsAsync(path.resolve(this.pathStore))){
-			await fs.mkdirAsync(path.resolve(this.pathStore));
-		}
-		if(await fs.existsAsync(path.resolve(this.pathStore,"_tables_"))){
-			try{
-				this.tableDefinition = JSON.parse(await fs.readFileAsync(path.resolve(this.pathStore,"_tables_"),{encoding:"utf8"}));
-			}catch(ex){
-			}
-		}
-		if(this.opts.transactionWrite){
-			this.keepInRam = true;
-			this.startWrites();
-		}
-		if(this.opts.keepInRam){
-			for(let k in this.tableDefinition){
-				await this.loadTableInRam(k);
-			}
-		}
-		if(this.loaded){
-			this.loaded();
-		}else{
-			this.loaded = Promise.resolve();
-		}
-	}
+      this.tableInstances[table].setUpdateEvent((name, uuid) => {
+        this.tableDefinition[name] = {
+          name: uuid
+        };
+        this.updateDefinitions();
+      })
 
-	WaitForLoaded(){
-		if(this.loaded){
-			return;
-		}
-		return new Promise(d=>{
-			this.loaded = d;
-		})
-	}
+      return this.tableInstances[table];
+    }
 
-	async loadTableInRam(table){
-		let rtable = await this.getRealTable(table);
-		if(!await this._existsFile(rtable)){
-			return;
-		}
-		let memory = this._getTableMemory(table);
-		return new Promise((done) => {
-			let w = this._readStream(rtable)
-				.pipe(split())
-				.on("data", (line) => {
-					line = line.trim();
-					if (line) {
-						try {
-							line = JSON.parse(line);
-							memory.rows.push(line);
-						} catch (ex) {}
-					}
-				})
-				.on("error", function (err) {
-					console.log(`ERROR: ${err}`);
-				})
-				.on("end", function () {
-					if (!w.destroyed) {
-						w.destroy();
-					}
-					done();
-				});
-		});	
-	}
+    this.tableInstances[table] = new TableController(this.pathStore, table);
+    this.tableDefinition[table] = {
+      name: this.tableInstances[table].tableDisk
+    };
+    this.tableInstances[table].setUpdateEvent((name, uuid) => {
+      this.tableDefinition[name] = {
+        name: uuid
+      };
+      this.updateDefinitions();
+    })
+    await this.updateDefinitions()
+    return this.tableInstances[table]
+  }
 
-	async startWrites(){
+  async insert(table, data) {
+    const tablei = await this.getTable(table);
+    return tablei.insert(data);
+  }
 
-		if(this.tableDefinition["#update"]){
-			delete this.tableDefinition["#update"];
-			await fs.writeFileAsync(path.resolve(this.pathStore,"_tables_"),JSON.stringify(this.tableDefinition));
-		}
+  async update(table, opts, data) {
+    const tablei = await this.getTable(table);
+    return tablei.update(opts, data);
+  }
+  async remove(table, opts) {
+    const tablei = await this.getTable(table);
+    return tablei.remove(opts);
+  }
 
-		for(let tableName in this.inMemory){
-			await this._getTableLock(tableName);
-			let table = this.inMemory[tableName];
-			if(table.hasChange){
-				let rTableName = await this.getRealTable(tableName);
-				let writer = fs.createWriteStream(path.resolve(this.pathStore,rTableName), {
-					flags: 'w'
-				});
-				for(let row of table.rows){
-					await new Promise(done=>{
-						writer.write(`${JSON.stringify(row)}\n`, done);
-					})
-					//await this._appendFile(rTableName, `${JSON.stringify(row)}\n`)
-				}
-				writer.close();
-			}
-			await this._releaseTableLock(tableName);
-		}
+  async count(table, opts = {}) {
+    const tablei = await this.getTable(table);
+    return tablei.count(opts);
+  }
 
-		setTimeout(()=>this.startWrites(),this.opts.writeTime);
-	}
-
-	async getRealTable(name){
-		if(!this.tableDefinition[name]){
-			this.tableDefinition[name] = {
-				name: this._generateUUID()
-			};
-			await this._updateTableDefinition();
-		}
-		return this.tableDefinition[name].name
-	}
-
-	async getNewNameTable(name){
-		if(!this.tableDefinition[name]){
-			this.tableDefinition[name] = {
-				name: this._generateUUID()
-			};
-		}
-		await this._updateTableDefinition();
-		return this.tableDefinition[name].name;
-	}
-
-	async tableDefinitionSync(){
-		let canWritePending =false;
-		for(let k in this.tableDefinition){
-
-			if(this.tableDefinition[k].newName){
-				canWritePending = true;
-				this.tableDefinition[k].oldName = this.tableDefinition[k].name;
-				this.tableDefinition[k].name = this.tableDefinition[k].newName;
-			}
-		}
-		if(canWritePending){
-			await this._updateTableDefinition();
-		}
-	}
-	
-	async _updateTableDefinition(){
-		if(this.opts.keepInRam){
-			this.tableDefinition["#update"] = true;
-		}else{
-			await fs.writeFileAsync(path.resolve(this.pathStore,"_tables_"),JSON.stringify(this.tableDefinition));
-		}
-	}
-
-	async _appendFile(filepath, content, opts = {encoding:"utf8"}){
-		let writer = fs.createWriteStream(path.resolve(this.pathStore, filepath), {
-					flags: 'a'
-				});
-		await new Promise(done => {
-			writer.write(content, done);
-		})
-		writer.close();
-	}
-
-	async _writeFile(filepath, content, opts = {encoding:"utf8"}){
-		let writer = fs.createWriteStream(path.resolve(this.pathStore, filepath), {
-					flags: 'w'
-				});
-		await new Promise(done => {
-			writer.write(content, done);
-		})
-		writer.close();
-		//return fs.writeFileAsync(path.resolve(this.pathStore, filepath),content,opts);
-	}
-	_existsFile(filepath){
-		return fs.existsAsync(path.resolve(this.pathStore,filepath));
-	}
-	_readStream(filepath){
-		return fs.createReadStream(path.resolve(this.pathStore,filepath));
-	}	
-	_deleteFile(filepath){
-		return fs.unlinkAsync(path.resolve(this.pathStore,filepath));
-	}
-
-	async _renameFile(oldFilePath, newFilePath){
-		await fs.unlinkAsync(path.resolve(this.pathStore,newFilePath));
-		await fs.copyFileAsync(path.resolve(this.pathStore,oldFilePath), path.resolve(this.pathStore,newFilePath));
-
-		return;
-		return fs.renameAsync(path.resolve(this.pathStore,oldFilePath), path.resolve(this.pathStore,newFilePath));
-	}
-
-
-
-	_generateUUID() {
-		// Public Domain/MIT
-		var d = new Date().getTime(); //Timestamp
-		var d2 =
-			(typeof performance !== "undefined" &&
-				performance.now &&
-				performance.now() * 1000) ||
-			0; //Time in microseconds since page-load or 0 if unsupported
-		return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
-			/[xy]/g,
-			function (c) {
-				var r = Math.random() * 16; //random number between 0 and 16
-				if (d > 0) {
-					//Use timestamp until depleted
-					r = (d + r) % 16 | 0;
-					d = Math.floor(d / 16);
-				} else {
-					//Use microseconds since page-load if supported
-					r = (d2 + r) % 16 | 0;
-					d2 = Math.floor(d2 / 16);
-				}
-				return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-			}
-		);
-	}
-
-	async _getTableLock(name) {
-		if(this.opts.keepInRam){
-			return true;
-		}
-		if (this.lockingTables[name] === undefined) {
-			this.lockingTables[name] = [];
-			return true;
-		}
-		return await new Promise((done) => {
-			this.lockingTables[name].push(done);
-		});
-	}
-
-	async _releaseTableLock(name) {
-		if (this.lockingTables[name]) {
-			for (let d of this.lockingTables[name]) {
-				await d();
-			}
-			delete this.lockingTables[name];
-		}
-	}
-
-	_getTableMemory(table){
-		if(!this.inMemory[table]){
-			this.inMemory[table] = {
-				rows:[]
-			};
-		}
-		return this.inMemory[table];
-	}
-
-	async insert(table, data) {
-		await this.WaitForLoaded();
-		await this._getTableLock(table);
-		let _table = await this.getRealTable(table);
-		data._id = this._generateUUID();
-		if(this.opts.keepInRam){
-			let memory = this._getTableMemory(table);
-			memory.hasChange = true;
-			memory.rows.push(data);
-		}else{
-			await this._appendFile(_table, JSON.stringify(data) + "\n", {
-				encoding: "utf8",
-			});
-		}
-		await this._releaseTableLock(table);
-		return data._id
-	}
-
-	async update(table, opts, data) {
-		await this.WaitForLoaded();
-		const { filter, limit, where } = opts;
-		await this._getTableLock(table);
-		let _table = await this.getRealTable(table);
-		let results = await this.find(table, {
-			filter,
-			limit,
-			extendLine: true,
-			where
-		});
-		let lineIndex = 0;
-		if(this.opts.keepInRam){
-			let memory = this._getTableMemory(table);
-			if(results.length){
-				memory.hasChange = true;
-				for(let r of results){
-					memory.rows[r.__i__] = {
-						...memory.rows[r.__i__],
-						...data,
-						__i__:undefined
-					};
-				
-				}
-			}
-
-			await this._releaseTableLock(table);
-			return;
-		}
-		if (results.length) {
-			let tmptable = await this.getNewNameTable(table);
-			await this._writeFile(tmptable, "",{encoding:"utf8"})
-			await new Promise((done) => {
-				const w = this._readStream(_table)
-					.pipe(split())
-					.on("data",  (line) => {
-						let findex = results.findIndex(
-							(r) => r.__i__ == lineIndex
-						);
-						line = line.trim();
-						if (line && findex == -1) {
-							this._appendFile(tmptable, line + "\n", {
-								encoding: "utf8",
-							});
-						} else if (findex != -1) {
-							line = JSON.parse(line);
-							this._appendFile(
-								tmptable,
-								JSON.stringify({ ...line, ...data }) + "\n",
-								{ encoding: "utf8" }
-							);
-						}
-
-						lineIndex++;
-					})
-					.on("end", function () {
-						/*
-						if(!w.destroyed){
-							w.destroy();
-						}
-						*/
-						done();
-					});
-			});
-		}
-		await this.tableDefinitionSync();
-		await this._releaseTableLock(table);
-	}
-	async remove(table, opts) {
-		await this.WaitForLoaded();
-		const { filter, limit, where } = opts;
-		await this._getTableLock(table);
-		let _table = await this.getRealTable(table);
-		let results = await this.find(table, {
-			filter,
-			limit,
-			extendLine: true,
-			where
-		});
-		let lineIndex = 0;
-		if(this.opts.keepInRam){
-			let memory = this._getTableMemory(table);
-			if(results.length){
-				results.sort((a,b)=>b.__i__-a.__i__)
-				memory.hasChange = true;
-				for(let r of results){
-					memory.rows.splice(r.__i__,1);
-				}
-			}
-
-			await this._releaseTableLock(table);
-			return;
-		}
-		if (results.length) {
-			let tmptable = await this.getNewNameTable(table);
-			await this._writeFile(tmptable, "",{encoding:"utf8"})
-			await new Promise((done) => {
-				const w = this._readStream(_table)
-					.pipe(split())
-					.on("data", (line) => {
-						let findex = results.findIndex(
-							(r) => r.__i__ == lineIndex
-						);
-						line = line.trim();
-						if (line && findex == -1) {
-							this._appendFile(tmptable, line + "\n", {
-								encoding: "utf8",
-							});
-						}
-
-						lineIndex++;
-					})
-					.on("end", function () {
-						/*
-						if(!w.destroyed){
-							w.destroy();
-						}
-						*/
-						done();
-					});
-			});
-		}
-		await this.tableDefinitionSync();
-		await this._releaseTableLock(table);
-	}
-
-	async count(table,opts = {}){
-		const results = await this.find(table,opts);
-		return (results || []).length;
-	}
-
-	async find(table, opts = {}) {
-		await this.WaitForLoaded();
-		const { filter, limit, extendLine, where } = opts;
-		if(this.opts.keepInRam){
-			let results = [];
-			let memory = this._getTableMemory(table);
-			let lineIndex = 0;
-			for(let line of memory.rows){
-				if (!where && !filter) {
-					if (extendLine) {
-						line.__i__ = lineIndex;
-					}
-					results.push(line);
-					if (limit && limit == results.length) {
-						break;
-					}
-				} else if (filter && filter(line)) {
-					if (extendLine) {
-						line.__i__ = lineIndex;
-					}
-					results.push(line);
-					if (limit && limit == results.length) {
-						break;
-					}
-				} else if (where) {
-					let find = true;
-					for (let k in where) {
-						if (where.hasOwnProperty(k)) {
-							if (typeof where[k] == "string") {
-								if (where[k] != line[k]) {
-									find = false;
-								}
-							} else if (where[k] instanceof RegExp) {
-								if (!where[k].test(line[k])) {
-									find = false;
-								}
-							}
-						}
-					}
-					if (find) {
-						if (extendLine) {
-							line.__i__ = lineIndex;
-						}
-						results.push(line);
-						if (limit && limit == results.length) {
-							break;
-						}
-					}
-				}
-				lineIndex++;
-			}
-
-			return results;
-		}
-		table = await this.getRealTable(table);
-		if(!await this._existsFile(table)){
-			return [];
-		}
-		return await new Promise(async (d, reject) => {
-			let filtered = [];
-			let lineIndex = 0;
-			try {
-				await this._getTableLock(table);
-				let w = this._readStream(table)
-					.pipe(split())
-					.on("data", (line) => {
-						line = line.trim();
-						if (line) {
-							try {
-								line = JSON.parse(line);
-								if(!where && !filter){
-									if (extendLine) {
-										line.__i__ = lineIndex;
-									}
-									filtered.push(line);
-									if (limit && limit == filtered.length) {
-										w.end();
-									}
-								} else if (filter && filter(line)) {
-									if (extendLine) {
-										line.__i__ = lineIndex;
-									}
-									filtered.push(line);
-									if (limit && limit == filtered.length) {
-										w.end();
-									}
-								}else if(where){
-									let find = true;
-									for(let k in where){
-										if (where.hasOwnProperty(k)) {
-											if(typeof where[k] == "string"){
-												if(where[k] != line[k]){
-													find = false;
-												}
-											}else if( where[k] instanceof RegExp){
-												if(!where[k].test(line[k])){
-													find = false;
-												}
-											}
-										}
-									}
-									if(find){
-										if (extendLine) {
-											line.__i__ = lineIndex;
-										}
-										filtered.push(line);
-										if (limit && limit == filtered.length) {
-											w.end();
-										}
-									}
-								}
-							} catch (ex) {
-								//skip error
-								//reject(ex.message);
-							}
-						}
-						lineIndex++;
-					})
-					.on("error", function (err) {
-						reject(`${err}`);
-					})
-					.on("end", function () {
-						/*
-						if(!w.destroyed){
-							w.destroy();
-						}
-						*/
-						d(filtered);
-					});
-			} catch (ex) {
-				reject(ex.message);
-			}
-			await this._releaseTableLock(table);
-		});
-		
-	}
+  async find(table, opts = {}) {
+    const tablei = await this.getTable(table);
+    return tablei.find(opts);
+  }
 }

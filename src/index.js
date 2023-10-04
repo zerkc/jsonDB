@@ -74,6 +74,7 @@ class TableController {
         const results = await this.find(queue.params.options);
         queue.resolve(results);
       }
+
     }
   }
 
@@ -127,24 +128,24 @@ class TableController {
           try {
             let idata = JSON.parse(line);
             if (this.verifyLineWhere(options, idata)) {
-              idata = { ...idata, ...data };
+              if (options.limit) {
+                if (options.limit > results.length) {
+                  idata = { ...idata, ...data };
+                }
+              }
             }
             results.push(await new Promise(done => {
               writer.write(`${JSON.stringify(idata)}\n`, done);
             }));
           } catch (ex) {
           }
-          if (options.limit) {
-            if (options.limit == results.length) {
-              reader.close();
-            }
-          }
+
         })
         .on('error', console.error)
         .on('close', async () => {
           if (await Promise.all(results)) {
             await fs.unlinkAsync(reader.path)
-            done(results);
+            done();
           }
         });
     })
@@ -182,7 +183,7 @@ class TableController {
           }
           if (options.limit) {
             if (options.limit == results.length) {
-              reader.close();
+              //reader.close();
             }
           }
         })
@@ -224,6 +225,7 @@ class TableController {
           if (options.limit) {
             if (options.limit == results.length) {
               reader.close();
+              done(results)
             }
           }
         })
@@ -311,7 +313,6 @@ export class JSONDB {
     this.loaded = new Promise(done => {
       this._init(done);
     })
-
   }
 
   async _init(done) {

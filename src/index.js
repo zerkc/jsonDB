@@ -183,7 +183,9 @@ class TableController {
 										);
 									})
 								);
-							} catch (ex) {}
+							} catch (ex) {
+								writer.close();
+							}
 						})
 						.on("error", reject)
 						.on("close", async () => {
@@ -256,7 +258,9 @@ class TableController {
 										})
 									);
 								}
-							} catch (ex) {}
+							} catch (ex) {
+								writer.close();
+							}
 							if (options.limit) {
 								if (options.limit == results.length) {
 									//reader.close();

@@ -1,11 +1,11 @@
 {
   "name": "jsondb",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "test": "jest"
+    "test": "jest --verbose"
   },
   "repository": {
     "type": "git",

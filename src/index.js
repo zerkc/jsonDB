@@ -1,6 +1,7 @@
 import fs, { write } from "fs";
 import path from "path";
 import split from "split";
+import * as readline from 'readline';
 
 function promisify(fun) {
 	return function (...args) {
@@ -34,6 +35,7 @@ class TableController {
 	locked = false;
 	actionsQueue = [];
 	updateTableDiskcb = false;
+	writers_queue = {};
 
 	constructor(pathdb, tableName, tableDisk = "") {
 		if (!tableDisk) {
@@ -155,6 +157,7 @@ class TableController {
 						}
 					);
 
+
 					reader
 						.pipe(split())
 						.on("data", async (line) => {
@@ -207,6 +210,34 @@ class TableController {
 		}
 	}
 
+	async write_queue(writer, data) {
+		if (!this.writers_queue[writer]) {
+			this.writers_queue[writer] = [];
+		}
+		this.writers_queue[writer].push(data);
+		if (this.writers_queue[writer].length >= 10000) {
+			return this.write_flush(writer);
+		}
+	}
+
+	async write_flush(writer) {
+		if (!this.writers_queue[writer] || this.writers_queue[writer].length === 0) {
+			return;
+		}
+		return new Promise((done, reject) => {
+			writer.write(
+				this.writers_queue[writer].join(''),
+				(err) => {
+					if (err) {
+						return reject(err);
+					}
+					delete this.writers_queue[writer];
+					done();
+				}
+			);
+		})
+	}
+
 	async remove(options) {
 		if (this.locked) {
 			return this.addActionQueue("REMOVE", { options });
@@ -215,7 +246,7 @@ class TableController {
 		try {
 			await new Promise((done, reject) => {
 				try {
-					const results = [];
+					let results = [];
 					if (
 						!fs.existsSync(
 							path.resolve(this.pathdb, this.tableDisk)
@@ -237,43 +268,72 @@ class TableController {
 						}
 					);
 
-					reader
-						.pipe(split())
-						.on("data", async (line) => {
-							try {
-								let data = JSON.parse(line);
-								if (!this.verifyLineWhere(options, data)) {
-									results.push(
-										await new Promise((done) => {
-											writer.on("error", reject);
-											writer.write(
-												`${JSON.stringify(data)}\n`,
-												(err) => {
-													if (err) {
-														return reject(err);
-													}
-													done();
-												}
-											);
-										})
-									);
-								}
-							} catch (ex) {
-								writer.close();
+					const rl = readline.createInterface({
+						input: reader,
+						output: writer,
+						terminal: false
+					});
+
+
+					rl.on('line', (line) => {
+						try {
+							let data = JSON.parse(line);
+							if (!this.verifyLineWhere(options, data)) {
+								rl.output.write(`${JSON.stringify(data)}\n`);
 							}
-							if (options.limit) {
-								if (options.limit == results.length) {
-									//reader.close();
-								}
-							}
-						})
-						.on("error", reject)
-						.on("close", async () => {
-							if (await Promise.all(results)) {
-								await fs.unlinkAsync(reader.path);
-								done(results);
-							}
-						});
+						} catch (ex) {
+							console.log(ex.message)
+							//console.log('delete end')
+						}
+					});
+
+					rl.on('close', async () => {
+						//console.log('Archivo procesado y guardado en', outputFile);
+						await fs.unlinkAsync(reader.path);
+						done([]);
+					});
+					// reader
+					// 	.pipe(split())
+					// 	.on("data", async (line) => {
+					// 		try {
+					// 			let data = JSON.parse(line);
+					// 			if (!this.verifyLineWhere(options, data)) {
+					// 				await this.write_queue(writer,`${JSON.stringify(data)}\n`).catch(reject);
+					// 				// results.push(
+					// 				// 	await new Promise((done) => {
+					// 				// 		writer.on("error", reject);
+					// 				// 		writer.write(
+					// 				// 			`${JSON.stringify(data)}\n`,
+					// 				// 			(err) => {
+					// 				// 				if (err) {
+					// 				// 					return reject(err);
+					// 				// 				}
+					// 				// 				done();
+					// 				// 			}
+					// 				// 		);
+					// 				// 	})
+					// 				// );
+					// 			}
+					// 		} catch (ex) {
+					// 			// console.error(ex)
+					// 			// writer.close();
+					// 		}
+					// 		if (options.limit) {
+					// 			if (options.limit == results.length) {
+					// 				//reader.close();
+					// 			}
+					// 		}
+					// 	})
+					// 	.on("error", reject)
+					// 	.on("close", async () => {
+					// 		console.log('delete end')
+					// 		if (await Promise.all(results)) {
+					// 			await this.write_flush(writer);
+					// 			await fs.unlinkAsync(reader.path);
+					// 			done(results);
+					// 			results = null;
+					// 		}
+					// 	});
 				} catch (ex) {
 					reject(ex);
 				}
@@ -294,7 +354,7 @@ class TableController {
 		try {
 			const response = await new Promise((done, reject) => {
 				try {
-					const results = [];
+					let results = [];
 					if (
 						!fs.existsSync(
 							path.resolve(this.pathdb, this.tableDisk)
@@ -308,26 +368,38 @@ class TableController {
 					const reader = fs.createReadStream(
 						path.resolve(this.pathdb, this.tableDisk)
 					);
-					reader
-						.pipe(split())
-						.on("data", (line) => {
-							try {
-								let data = JSON.parse(line);
-								if (this.verifyLineWhere(options, data)) {
-									results.push(data);
-								}
-							} catch (ex) {}
-							if (options.limit) {
-								if (options.limit == results.length) {
-									reader.close();
-									done(results);
-								}
+					const rl = readline.createInterface({
+						input: reader
+					});
+					rl.on('line', (line) => {
+						try {
+							let data = JSON.parse(line);
+							if (this.verifyLineWhere(options, data)) {
+								results.push(data);
 							}
-						})
-						.on("error", reject)
-						.on("close", () => {
-							done(results);
-						});
+						} catch (ex) {}
+						if (options.limit && results) {
+							if (options.limit == results.length) {
+								done(results);
+								rl.close();
+								//reader.close();
+							}
+						}
+
+					});
+					rl.on('close', () => {
+						done(results);
+						results = null;
+					});
+					// reader
+					// 	.pipe(split())
+					// 	.on("data", (line) => {
+					//
+					// 	})
+					// 	.on("error", reject)
+					// 	.on("close", () => {
+					//
+					// 	});
 				} catch (ex) {
 					reject(ex);
 				}
@@ -349,6 +421,9 @@ class TableController {
 	}
 
 	verifyLineWhere(options, data) {
+		if (!options) {
+			return true;
+		}
 		if (options.where) {
 			for (let k in options.where) {
 				if (options.where.hasOwnProperty(k)) {

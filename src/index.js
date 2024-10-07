@@ -1,7 +1,7 @@
 import fs, { write } from "fs";
 import path from "path";
 import split from "split";
-import * as readline from 'readline';
+import * as readline from "readline";
 
 function promisify(fun) {
 	return function (...args) {
@@ -122,6 +122,9 @@ class TableController {
 	}
 	updateTableDisk() {
 		this.tableDisk = this._generateUUID();
+	}
+
+	consolidateTable() {
 		if (this.updateTableDiskcb) {
 			this.updateTableDiskcb(this.tableName, this.tableDisk);
 		}
@@ -156,7 +159,6 @@ class TableController {
 							flags: "w",
 						}
 					);
-
 
 					reader
 						.pipe(split())
@@ -193,6 +195,7 @@ class TableController {
 						.on("error", reject)
 						.on("close", async () => {
 							if (await Promise.all(results)) {
+								this.consolidateTable();
 								await fs.unlinkAsync(reader.path);
 								done();
 							}
@@ -221,21 +224,21 @@ class TableController {
 	}
 
 	async write_flush(writer) {
-		if (!this.writers_queue[writer] || this.writers_queue[writer].length === 0) {
+		if (
+			!this.writers_queue[writer] ||
+			this.writers_queue[writer].length === 0
+		) {
 			return;
 		}
 		return new Promise((done, reject) => {
-			writer.write(
-				this.writers_queue[writer].join(''),
-				(err) => {
-					if (err) {
-						return reject(err);
-					}
-					delete this.writers_queue[writer];
-					done();
+			writer.write(this.writers_queue[writer].join(""), (err) => {
+				if (err) {
+					return reject(err);
 				}
-			);
-		})
+				delete this.writers_queue[writer];
+				done();
+			});
+		});
 	}
 
 	async remove(options) {
@@ -271,24 +274,24 @@ class TableController {
 					const rl = readline.createInterface({
 						input: reader,
 						output: writer,
-						terminal: false
+						terminal: false,
 					});
 
-
-					rl.on('line', (line) => {
+					rl.on("line", (line) => {
 						try {
 							let data = JSON.parse(line);
 							if (!this.verifyLineWhere(options, data)) {
 								rl.output.write(`${JSON.stringify(data)}\n`);
 							}
 						} catch (ex) {
-							console.log(ex.message)
+							console.log(ex.message);
 							//console.log('delete end')
 						}
 					});
 
-					rl.on('close', async () => {
+					rl.on("close", async () => {
 						//console.log('Archivo procesado y guardado en', outputFile);
+						this.consolidateTable();
 						await fs.unlinkAsync(reader.path);
 						done([]);
 					});
@@ -369,9 +372,9 @@ class TableController {
 						path.resolve(this.pathdb, this.tableDisk)
 					);
 					const rl = readline.createInterface({
-						input: reader
+						input: reader,
 					});
-					rl.on('line', (line) => {
+					rl.on("line", (line) => {
 						try {
 							let data = JSON.parse(line);
 							if (this.verifyLineWhere(options, data)) {
@@ -385,9 +388,8 @@ class TableController {
 								//reader.close();
 							}
 						}
-
 					});
-					rl.on('close', () => {
+					rl.on("close", () => {
 						done(results);
 						results = null;
 					});

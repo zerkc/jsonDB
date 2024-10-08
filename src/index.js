@@ -163,8 +163,9 @@ class TableController {
 					reader
 						.pipe(split())
 						.on("data", async (line) => {
+							if (!line || !line.trim()) return;
 							try {
-								let idata = JSON.parse(line);
+								let idata = JSON.parse(line.trim());
 								if (this.verifyLineWhere(options, idata)) {
 									if (options.limit) {
 										if (options.limit > results.length) {
@@ -178,28 +179,26 @@ class TableController {
 									await new Promise((done) => {
 										writer.on("error", reject);
 										writer.write(
-											`${JSON.stringify(idata)}\n`,
-											(err) => {
-												if (err) {
-													return reject(err);
-												}
-												done();
-											}
+											`${JSON.stringify(idata)}\n`
 										);
 									})
 								);
 							} catch (ex) {
+								console.error(ex);
 								writer.close();
 							}
 						})
 						.on("error", reject)
 						.on("close", async () => {
-							if (await Promise.all(results)) {
-								this.consolidateTable();
-								await fs.unlinkAsync(reader.path);
-								done();
-							}
+							writer.close();
 						});
+					writer.on("close", async () => {
+						if (await Promise.all(results)) {
+							this.consolidateTable();
+							await fs.unlinkAsync(reader.path);
+							done();
+						}
+					});
 				} catch (ex) {
 					reject(ex);
 				}

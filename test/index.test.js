@@ -1,9 +1,9 @@
-import {JSONDB} from "../src/index.js";
-import {expect, test} from "@jest/globals";
+import { JSONDB } from "../src/index.js";
+import { expect, test } from "@jest/globals";
 import fs from "fs";
 
 if (fs.existsSync(".db/")) {
-	fs.rmSync(".db/", {recursive: true});
+	fs.rmSync(".db/", { recursive: true });
 }
 const db = new JSONDB(undefined, {
 	keepInRam: true,
@@ -12,9 +12,9 @@ const db = new JSONDB(undefined, {
 });
 
 test("Creacion u1", async () => {
-	const user = {username: "a", passwd: "a"};
-	await db.insert("users", {...user});
-	const u = await db.find("users", {where: user});
+	const user = { username: "a", passwd: "a" };
+	await db.insert("users", { ...user });
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeDefined();
 	expect(user.username).toBe(u[0].username);
@@ -22,9 +22,9 @@ test("Creacion u1", async () => {
 });
 
 test("Creacion u2", async () => {
-	const user = {username: "b", passwd: "b"};
-	await db.insert("users", {...user});
-	const u = await db.find("users", {where: user});
+	const user = { username: "b", passwd: "b" };
+	await db.insert("users", { ...user });
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeDefined();
 	expect(user.username).toBe(u[0].username);
@@ -32,9 +32,9 @@ test("Creacion u2", async () => {
 });
 
 test("Creacion u3", async () => {
-	const user = {username: "c", passwd: "c"};
-	await db.insert("users", {...user});
-	const u = await db.find("users", {where: user});
+	const user = { username: "c", passwd: "c" };
+	await db.insert("users", { ...user });
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeDefined();
 	expect(user.username).toBe(u[0].username);
@@ -42,13 +42,13 @@ test("Creacion u3", async () => {
 });
 
 test("Update u1", async () => {
-	const user = {username: "a", passwd: "b"};
+	const user = { username: "a", passwd: "b" };
 	await db.update(
 		"users",
-		{where: {username: user.username}},
-		{passwd: user.passwd}
+		{ where: { username: user.username } },
+		{ passwd: user.passwd }
 	);
-	const u = await db.find("users", {where: user});
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeDefined();
 	expect(user.username).toBe(u[0].username);
@@ -56,13 +56,13 @@ test("Update u1", async () => {
 });
 
 test("Update u2", async () => {
-	const user = {username: "b", passwd: "c"};
+	const user = { username: "b", passwd: "c" };
 	await db.update(
 		"users",
-		{where: {username: user.username}},
-		{passwd: user.passwd}
+		{ where: { username: user.username } },
+		{ passwd: user.passwd }
 	);
-	const u = await db.find("users", {where: user});
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeDefined();
 	expect(user.username).toBe(u[0].username);
@@ -70,65 +70,74 @@ test("Update u2", async () => {
 });
 
 test("Update u3", async () => {
-	const user = {username: "c", passwd: "d"};
+	const user = { username: "c", passwd: "d" };
 	await db.update(
 		"users",
-		{where: {username: user.username}},
-		{passwd: user.passwd}
+		{ where: { username: user.username } },
+		{ passwd: user.passwd }
 	);
-	const u = await db.find("users", {where: user});
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeDefined();
 	expect(user.username).toBe(u[0].username);
 	expect(user.passwd).toBe(u[0].passwd);
 });
 
+// test("update 4 testing full update", async () => {
+// 	await db.insert("flags", { name: "testing", value: -1 });
+
+// 	for (let i = 0; i < 2_899; i++) {
+// 		// await db.update("flags", { where: { name: "testing" } }, { value: 1 });
+// 		await db.update("flags", { where: { name: "testing" } }, { value: i });
+// 	}
+// });
+
 test("delete u1", async () => {
-	const user = {username: "a"};
-	await db.remove("users", {where: {username: user.username}});
-	const u = await db.find("users", {where: user});
+	const user = { username: "a" };
+	await db.remove("users", { where: { username: user.username } });
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeUndefined();
 });
 
 test("delete u2", async () => {
-	const user = {username: "b"};
-	await db.remove("users", {where: {username: user.username}});
-	const u = await db.find("users", {where: user});
+	const user = { username: "b" };
+	await db.remove("users", { where: { username: user.username } });
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeUndefined();
 });
 
 test("delete u3", async () => {
-	const user = {username: "c"};
-	await db.remove("users", {where: {username: user.username}});
-	const u = await db.find("users", {where: user});
+	const user = { username: "c" };
+	await db.remove("users", { where: { username: user.username } });
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeUndefined();
 });
 
 test("Error insert", async () => {
 	fs.chmodSync(".db/", "0222");
-	const user = {username: "e", passwd: "e"};
+	const user = { username: "e", passwd: "e" };
 
-	await expect(db.insert("users", {...user})).rejects.toMatch("permission");
+	await expect(db.insert("users", { ...user })).rejects.toMatch("permission");
 
 	fs.chmodSync(".db/", "0777");
-	const u = await db.find("users", {where: user});
+	const u = await db.find("users", { where: user });
 	expect(u[0]).toBeUndefined();
 });
 
 test("Error update", async () => {
-	const user = {username: "e", passwd: "e"};
-	await db.insert("users", {...user});
+	const user = { username: "e", passwd: "e" };
+	await db.insert("users", { ...user });
 	fs.chmodSync(".db/", "0222");
 
 	await expect(
-		db.update("users", {username: user.username}, {passwd: "h"})
+		db.update("users", { username: user.username }, { passwd: "h" })
 	).rejects.toMatch("permission");
 
 	fs.chmodSync(".db/", "0777");
-	const u = await db.find("users", {where: user});
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeDefined();
 	expect(user.username).toBe(u[0].username);
@@ -136,16 +145,16 @@ test("Error update", async () => {
 });
 
 test("Error delete", async () => {
-	const user = {username: "h", passwd: "h"};
-	await db.insert("users", {...user});
+	const user = { username: "h", passwd: "h" };
+	await db.insert("users", { ...user });
 	fs.chmodSync(".db/", "0222");
 
 	await expect(
-		db.remove("users", {username: user.username})
+		db.remove("users", { username: user.username })
 	).rejects.toMatch("permission");
 
 	fs.chmodSync(".db/", "0777");
-	const u = await db.find("users", {where: user});
+	const u = await db.find("users", { where: user });
 	expect(u).toBeDefined();
 	expect(u[0]).toBeDefined();
 	expect(user.username).toBe(u[0].username);
@@ -154,21 +163,20 @@ test("Error delete", async () => {
 
 test("Error find", async () => {
 	fs.chmodSync(".db/", "0444");
-	const user = {username: "e", passwd: "e"};
-	await expect(db.find("users", {username: user.username})).rejects.toMatch(
+	const user = { username: "e", passwd: "e" };
+	await expect(db.find("users", { username: user.username })).rejects.toMatch(
 		"permission"
 	);
 	fs.chmodSync(".db/", "0777");
 });
 
-
 test("all data", async () => {
 	let now = new Date();
 	now.setMonth(now.getMonth() - 3);
 	let last_id = 0;
-	console.time('insert');
+	console.time("insert");
 	for (let i = 0; i < 1_000_000; i++) {
-		await db.insert('stats', {
+		await db.insert("stats", {
 			sc_order: `${i}`,
 			scene: `stats - akjfshsk - asdjfhakf - assad - ${i + 1}`,
 			scene_image: ``,
@@ -178,37 +186,35 @@ test("all data", async () => {
 		});
 		now.setMinutes(now.getMinutes() + 8);
 	}
-	console.timeEnd('insert');
+	console.timeEnd("insert");
 
 	for (let i = 0; i < 2; i++) {
-		console.time('find');
+		console.time("find");
 		let info = await db.find("stats", {
 			filter: (e) => {
-				return (
-					new Date(e.timestamp).getTime() > (last_id || 0)
-				);
+				return new Date(e.timestamp).getTime() > (last_id || 0);
 			},
-			limit: 1000
+			limit: 1000,
 		});
-		console.timeEnd('find');
-		console.log(info.length)
+		console.timeEnd("find");
+		console.log(info.length);
 
-		console.time('count');
+		console.time("count");
 		let count = await db.count("stats");
-		console.timeEnd('count');
+		console.timeEnd("count");
 
 		expect(info.length).toBeGreaterThanOrEqual(1000);
 
 		last_id = new Date(info[info.length - 1].timestamp).getTime();
-		console.time('delete');
+		console.time("delete");
 		await db.remove("stats", {
 			filter: (e) => {
 				let eDate = new Date(e.timestamp);
 				eDate.setMilliseconds(0);
 				return eDate.getTime() <= (last_id || 0);
-			}
+			},
 		});
-		console.timeEnd('delete');
+		console.timeEnd("delete");
 
 		let beforecount = await db.count("stats");
 

@@ -24,7 +24,7 @@ fs.mkdirAsync = promisify(fs.mkdir);
 fs.statAsync = promisify(fs.stat);
 fs.readFileAsync = promisify(fs.readFile);
 fs.writeFileAsync = promisify(fs.writeFile);
-fs.unlinkAsync = promisify(fs.unlink);
+fs.unlinkAsync = fs.unlinkSync;
 fs.rmDirAsync = promisify(fs.rmdir);
 fs.copyFileAsync = promisify(fs.copyFile);
 

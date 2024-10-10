@@ -19,6 +19,7 @@
 	},
 	"homepage": "https://github.com/zerkc/jsonDB#readme",
 	"dependencies": {
+		"graceful-fs": "^4.2.11",
 		"split": "^1.0.1"
 	},
 	"devDependencies": {

@@ -3,16 +3,16 @@ import path from "path";
 import { TableController } from "./TableController.js";
 
 function promisify(fun) {
-    return function (...args) {
-        return new Promise((resolve, reject) => {
-            fun.apply(
-                fun,
-                [].concat(args, (err, res) =>
-                    err ? reject(err) : resolve(res)
-                )
-            );
-        });
-    };
+	return function (...args) {
+		return new Promise((resolve, reject) => {
+			fun.apply(
+				fun,
+				[].concat(args, (err, res) =>
+					err ? reject(err) : resolve(res)
+				)
+			);
+		});
+	};
 }
 
 fs.appendFileAsync = promisify(fs.appendFile);
@@ -28,105 +28,105 @@ fs.rmDirAsync = promisify(fs.rmdir);
 fs.copyFileAsync = promisify(fs.copyFile);
 
 export class JSONDB {
-    opts = {};
-    pathStore = "";
-    tableDefinition = {};
-    tableInstances = {};
+	opts = {};
+	pathStore = "";
+	tableDefinition = {};
+	tableInstances = {};
 
-    constructor(pathdb = "./.db/", opts = {}) {
-        this.pathStore = pathdb;
-        this.opts = { ...opts, opts };
-        this.loaded = new Promise((done) => {
-            this._init(done);
-        });
-    }
+	constructor(pathdb = "./.db/", opts = {}) {
+		this.pathStore = pathdb;
+		this.opts = { ...opts, opts };
+		this.loaded = new Promise((done) => {
+			this._init(done);
+		});
+	}
 
-    async _init(done) {
-        if (!(await fs.existsAsync(path.resolve(this.pathStore)))) {
-            await fs.mkdirAsync(path.resolve(this.pathStore));
-        }
-        if (await fs.existsAsync(path.resolve(this.pathStore, "_tables_"))) {
-            try {
-                this.tableDefinition = JSON.parse(
-                    await fs.readFileAsync(
-                        path.resolve(this.pathStore, "_tables_"),
-                        { encoding: "utf8" }
-                    )
-                );
-            } catch (ex) {
-                console.log(ex);
-            }
-        }
-        done();
-    }
+	async _init(done) {
+		if (!(await fs.existsAsync(path.resolve(this.pathStore)))) {
+			await fs.mkdirAsync(path.resolve(this.pathStore));
+		}
+		if (await fs.existsAsync(path.resolve(this.pathStore, "_tables_"))) {
+			try {
+				this.tableDefinition = JSON.parse(
+					await fs.readFileAsync(
+						path.resolve(this.pathStore, "_tables_"),
+						{ encoding: "utf8" }
+					)
+				);
+			} catch (ex) {
+				console.log(ex);
+			}
+		}
+		done();
+	}
 
-    async updateDefinitions() {
-        try {
-            await fs.writeFileAsync(
-                path.resolve(this.pathStore, "_tables_"),
-                JSON.stringify(this.tableDefinition),
-                { encoding: "utf8" }
-            );
-        } catch (ex) {}
-    }
+	async updateDefinitions() {
+		try {
+			await fs.writeFileAsync(
+				path.resolve(this.pathStore, "_tables_"),
+				JSON.stringify(this.tableDefinition),
+				{ encoding: "utf8" }
+			);
+		} catch (ex) {}
+	}
 
-    async getTable(table) {
-        await this.loaded;
-        if (this.tableInstances[table]) {
-            return this.tableInstances[table];
-        }
-        if (this.tableDefinition[table]) {
-            this.tableInstances[table] = new TableController(
-                this.pathStore,
-                table,
-                this.tableDefinition[table].name
-            );
+	async getTable(table) {
+		await this.loaded;
+		if (this.tableInstances[table]) {
+			return this.tableInstances[table];
+		}
+		if (this.tableDefinition[table]) {
+			this.tableInstances[table] = new TableController(
+				this.pathStore,
+				table,
+				this.tableDefinition[table].name
+			);
 
-            this.tableInstances[table].setUpdateEvent((name, uuid) => {
-                this.tableDefinition[name] = {
-                    name: uuid,
-                };
-                this.updateDefinitions();
-            });
+			this.tableInstances[table].setUpdateEvent((name, uuid) => {
+				this.tableDefinition[name] = {
+					name: uuid,
+				};
+				this.updateDefinitions();
+			});
 
-            return this.tableInstances[table];
-        }
+			return this.tableInstances[table];
+		}
 
-        this.tableInstances[table] = new TableController(this.pathStore, table);
-        this.tableDefinition[table] = {
-            name: this.tableInstances[table].tableDisk,
-        };
-        this.tableInstances[table].setUpdateEvent((name, uuid) => {
-            this.tableDefinition[name] = {
-                name: uuid,
-            };
-            this.updateDefinitions();
-        });
-        await this.updateDefinitions();
-        return this.tableInstances[table];
-    }
+		this.tableInstances[table] = new TableController(this.pathStore, table);
+		this.tableDefinition[table] = {
+			name: this.tableInstances[table].tableDisk,
+		};
+		this.tableInstances[table].setUpdateEvent((name, uuid) => {
+			this.tableDefinition[name] = {
+				name: uuid,
+			};
+			this.updateDefinitions();
+		});
+		await this.updateDefinitions();
+		return this.tableInstances[table];
+	}
 
-    async insert(table, data) {
-        const tablei = await this.getTable(table);
-        return tablei.insert(data);
-    }
+	async insert(table, data) {
+		const tablei = await this.getTable(table);
+		return tablei.insert(data);
+	}
 
-    async update(table, opts, data) {
-        const tablei = await this.getTable(table);
-        return tablei.update(opts, data);
-    }
-    async remove(table, opts) {
-        const tablei = await this.getTable(table);
-        return tablei.remove(opts);
-    }
+	async update(table, opts, data) {
+		const tablei = await this.getTable(table);
+		return tablei.update(opts, data);
+	}
+	async remove(table, opts) {
+		const tablei = await this.getTable(table);
+		return tablei.remove(opts);
+	}
 
-    async count(table, opts = {}) {
-        const tablei = await this.getTable(table);
-        return tablei.count(opts);
-    }
+	async count(table, opts = {}) {
+		const tablei = await this.getTable(table);
+		return tablei.count(opts);
+	}
 
-    async find(table, opts = {}) {
-        const tablei = await this.getTable(table);
-        return tablei.find(opts);
-    }
+	async find(table, opts = {}) {
+		const tablei = await this.getTable(table);
+		return tablei.find(opts);
+	}
 }

@@ -2,253 +2,293 @@ import { UUIDV4 } from "./utils/uuid.js";
 import fs from "fs";
 import path from "path";
 import { FileSystem } from "./utils/FileSystem.js";
+import { deepmerge } from "./utils/deepmerge.js";
+import { Queue } from "./utils/queue.js";
 
 export class TableController {
-	tableName = "";
-	tableDisk = "";
-	pathdb = "";
-	locked = false;
-	actionsQueue = [];
-	updateTableDiskcb = false;
-	writers_queue = {};
+  tableDefinition = {
+    name: "",
+    disk: "",
+    index: {
+      _id: {
+        type: "string",
+        unique: true,
+      },
+    },
+    syncTable: 100000,
+    syncSave: 0,
+  };
+  pathdb = "";
+  rows = [];
+  rowsIndex = {};
+  tableSyncOperation = 0;
+  tableSaveOperation = 0;
+  updateTableDiskcb = false;
 
-	constructor(pathdb, tableName, tableDisk = "") {
-		if (!tableDisk) {
-			tableDisk = UUIDV4();
-		}
+  constructor(pathdb, tableDescriptor = {}) {
+    this.tableDefinition = deepmerge(this.tableDefinition, tableDescriptor);
+    if (!this.tableDefinition.disk) {
+      this.tableDefinition.disk = UUIDV4();
+    }
+    this.pathdb = pathdb;
+    this._loadTableData();
+    this._syncTable();
+  }
 
-		this.pathdb = pathdb;
-		this.tableName = tableName;
-		this.tableDisk = tableDisk;
-	}
+  getPath() {
+    return path.resolve(this.pathdb, this.tableDefinition.disk);
+  }
 
-	getPath() {
-		return path.resolve(this.pathdb, this.tableDisk);
-	}
+  setUpdateEvent(cb) {
+    if (typeof cb == "function") {
+      this.updateTableDiskcb = cb;
+    }
+  }
 
-	updateTableDisk() {
-		this.tableDisk = UUIDV4();
-	}
+  consolidateTable() {
+    if (this.updateTableDiskcb) {
+      this.updateTableDiskcb(
+        this.tableDefinition.name,
+        this.tableDefinition.disk,
+      );
+    }
+  }
 
-	setUpdateEvent(cb) {
-		if (typeof cb == "function") {
-			this.updateTableDiskcb = cb;
-		}
-	}
+  _verifyId(id) {
+    if (!this.rowsIndex["_id"]) {
+      return true;
+    }
+    return !this.rowsIndex["_id"][id];
+  }
 
-	consolidateTable() {
-		if (this.updateTableDiskcb) {
-			this.updateTableDiskcb(this.tableName, this.tableDisk);
-		}
-	}
+  _addRow(data) {
+    data = JSON.parse(JSON.stringify(data));
+    let canAdded = true;
+    Object.keys(this.tableDefinition.index).forEach((key) => {
+      if (!this.rowsIndex[key]) {
+        if (!this.tableDefinition.index[key].unique) {
+          this.rowsIndex[key] = [];
+        } else {
+          this.rowsIndex[key] = {};
+        }
+      }
+      if (this.tableDefinition.index[key].unique) {
+        if (!this.rowsIndex[key][data[key]]) {
+          this.rowsIndex[key][data[key]] = data;
+        } else {
+          canAdded = false;
+          deepmerge(this.rowsIndex[key][data[key]], data);
+        }
+      } else {
+        if (!this.rowsIndex[key][data[key]]) {
+          this.rowsIndex[key][data[key]] = [];
+        }
+        this.rowsIndex[key][data[key]].push(data);
+      }
+    });
+    if (canAdded) {
+      this.rows.push(data);
+    }
+  }
 
-	addActionQueue(action, params) {
-		return new Promise((done) => {
-			this.actionsQueue.push({
-				action,
-				params,
-				resolve: done,
-			});
-		});
-	}
+  async _loadTableData() {
+    const next = await Queue.asyncPush();
+    if (!fs.existsSync(this.getPath())) {
+      next();
+      return;
+    }
 
-	async processQueue() {
-		const queue = this.actionsQueue.shift();
-		if (queue) {
-			if (queue.action == "INSERT") {
-				await this.insert(queue.params.data);
-				queue.resolve();
-			} else if (queue.action == "UPDATE") {
-				await this.update(queue.params.options, queue.params.data);
-				queue.resolve();
-			} else if (queue.action == "REMOVE") {
-				await this.remove(queue.params.options);
-				queue.resolve();
-			} else if (queue.action == "FIND") {
-				const results = await this.find(queue.params.options);
-				queue.resolve(results);
-			}
-		}
-	}
+    try {
+      const FSReader = await FileSystem.CreateReader(this.getPath());
+      let line;
+      while ((line = await FSReader.readLine())) {
+        if (!line) {
+          break;
+        }
+        try {
+          let idata = JSON.parse(line);
+          this._addRow(idata);
+        } catch (ex) {}
+      }
+      await FSReader.close();
+    } catch (ex) {}
 
-	verifyLineWhere(options, data) {
-		if (!options) {
-			return true;
-		}
-		if (options.where) {
-			for (let k in options.where) {
-				if (options.where.hasOwnProperty(k)) {
-					if (options.where[k] instanceof RegExp) {
-						if (options.where[k].test(data[k])) {
-							return true;
-						}
-					} else {
-						if (data[k] == options.where[k]) {
-							return true;
-						}
-					}
-					return false;
-				}
-			}
-		} else if (options.filter) {
-			return options.filter(data);
-		} else {
-			return true;
-		}
+    next();
+  }
 
-		return false;
-	}
+  async _syncTable() {
+    const next = await Queue.asyncPush();
+    let FSWriter;
+    try {
+      FSWriter = await FileSystem.CreateWriter(this.getPath() + ".bk~~");
+      for (const data of this.rows) {
+        if (!data.$$deleted) {
+          await FSWriter.writeLine(JSON.stringify(data));
+        }
+      }
+      await FSWriter.close();
+      if (fs.existsSync(this.getPath())) {
+        fs.renameSync(this.getPath(), this.getPath() + ".bk~");
+      }
+      fs.renameSync(this.getPath() + ".bk~~", this.getPath());
+      if (fs.existsSync(this.getPath() + ".bk~")) {
+        fs.unlinkSync(this.getPath() + ".bk~");
+      }
+    } catch (ex) {
+      if (FSWriter) {
+        await FSWriter.close();
+      }
+    }
+    this.consolidateTable();
+    next();
+  }
 
-	async insert(data = {}) {
-		if (this.locked) {
-			return this.addActionQueue("INSERT", { data });
-		}
-		this.locked = true;
+  async insert(data = {}) {
+    const next = await Queue.asyncPush();
+    let _id = UUIDV4();
+    while (!this._verifyId(_id)) {
+      _id = UUIDV4();
+    }
+    data._id = _id;
+    this._addRow(data);
 
-		let FSWriter;
-		try {
-			FSWriter = await FileSystem.CreateAppendWriter(this.getPath());
-			if (Array.isArray(data)) {
-				for (const d of data) {
-					await this.insert(d);
-				}
-			} else {
-				data._id = UUIDV4();
-				await FSWriter.writeLine(JSON.stringify(data));
-				await FSWriter.close();
-			}
-			this.locked = false;
-			this.processQueue();
-		} catch (ex) {
-			this.locked = false;
-			if (FSWriter) {
-				await FSWriter.close();
-			}
-			throw ex.message;
-		}
-	}
+    let FSWriter;
+    try {
+      FSWriter = await FileSystem.CreateAppendWriter(this.getPath());
+      await FSWriter.writeLine(JSON.stringify(data));
+      await FSWriter.close();
+    } catch (err) {
+      if (FSWriter) {
+        await FSWriter.close();
+      }
+    }
 
-	async update(options = {}, data = {}) {
-		if (this.locked) {
-			return this.addActionQueue("UPDATE", { data, options });
-		}
-		this.locked = true;
+    next();
+  }
 
-		const FSReader = await FileSystem.CreateReader(this.getPath());
-		this.updateTableDisk();
-		const fileDescriptorWriter = fs.openSync(this.getPath(), "w");
+  _getCandidates(options) {
+    const rows = this._getFilterCandidates(options);
+    if (options.limit) {
+      return rows.slice(0, options.limit);
+    }
+    return rows;
+  }
 
-		let line;
-		let updates = 0;
-		let endUpdated = false;
-		while ((line = await FSReader.readLine())) {
-			if (!line) {
-				break;
-			}
-			try {
-				let idata = JSON.parse(line);
-				if (this.verifyLineWhere(options, idata) && !endUpdated) {
-					idata = { ...idata, ...data };
-					updates++;
-				}
-				if (options.limit && options.limit <= updates) {
-					endUpdated = true;
-				}
-				fs.writeSync(
-					fileDescriptorWriter,
-					`${JSON.stringify(idata)}\n`
-				);
-			} catch (ex) {
-				console.log(ex.message);
-			}
-		}
+  _getFilterCandidates(options) {
+    if (
+      !options ||
+      Object.keys(options).length == 0 ||
+      (!options.where && !options.filter)
+    ) {
+      return this.rows.filter((row) => !row.$$deleted);
+    }
+    if (options.where) {
+      for (let key of Object.keys(options.where)) {
+        if (options.where[key] instanceof RegExp) {
+          if (this.tableDefinition.index[key]) {
+            let keys = Object.keys(this.rowsIndex).find((k) =>
+              k.test(options.where[key]),
+            );
+            return keys
+              .map((k) => this.rowsIndex[key][k])
+              .filter((row) => !row.$$deleted);
+          } else {
+            return this.rows
+              .filter((row) => row[key].test(options.where[key]))
+              .filter((row) => !row.$$deleted);
+          }
+        } else if (typeof options.where[key] != "object") {
+          if (this.tableDefinition.index[key]) {
+            const result = this.rowsIndex[key][options.where[key]];
+            return (Array.isArray(result) ? result : [result]).filter(
+              (row) => !row.$$deleted,
+            );
+          } else {
+            return this.rows
+              .filter((row) => {
+                return row[key] == options.where[key];
+              })
+              .filter((row) => !row.$$deleted);
+          }
+        }
+      }
+    } else if (options.filter) {
+      return this.rows.filter((row) => !row.$$deleted).filter(options.filter);
+    }
+  }
 
-		await FSReader.close();
-		await FSReader.delete();
-		fs.closeSync(fileDescriptorWriter);
-		this.consolidateTable();
-		this.locked = false;
-		this.processQueue();
-	}
+  async update(options = {}, data = {}) {
+    const next = await Queue.asyncPush();
+    const rows = this._getCandidates(options);
+    if (rows) {
+      let FSWriter;
+      try {
+        FSWriter = await FileSystem.CreateAppendWriter(this.getPath());
+        for (const row of rows) {
+          this.tableSyncOperation++;
+          deepmerge(row, data);
+          await FSWriter.writeLine(JSON.stringify(row));
+        }
+        await FSWriter.close();
+      } catch (err) {
+        if (FSWriter) {
+          await FSWriter.close();
+        }
+      }
+    }
 
-	async remove(options = {}) {
-		if (this.locked) {
-			return this.addActionQueue("REMOVE", { options });
-		}
-		this.locked = true;
+    if (this.tableSyncOperation >= this.tableDefinition.syncTable) {
+      this._syncTable();
+      this.tableSyncOperation = 0;
+    }
 
-		const FSReader = await FileSystem.CreateReader(this.getPath());
-		this.updateTableDisk();
-		const FSWriter = await FileSystem.CreateWriter(this.getPath());
+    next();
+  }
 
-		let line;
-		let deleted = 0;
-		let endDeleted = false;
-		while ((line = await FSReader.readLine())) {
-			if (!line) {
-				break;
-			}
-			try {
-				let idata = JSON.parse(line);
+  async remove(options = {}) {
+    const next = await Queue.asyncPush();
+    const rows = this._getCandidates(options);
+    if (rows) {
+      let FSWriter;
+      try {
+        FSWriter = await FileSystem.CreateAppendWriter(this.getPath());
+        for (const row of rows) {
+          this.tableSyncOperation++;
+          deepmerge(row, { $$deleted: true });
+          await FSWriter.writeLine(JSON.stringify(row));
+        }
+        await FSWriter.close();
+      } catch (err) {
+        if (FSWriter) {
+          await FSWriter.close();
+        }
+      }
+    }
 
-				if (!this.verifyLineWhere(options, idata) || endDeleted) {
-					await FSWriter.writeLine(JSON.stringify(idata));
-				} else {
-					deleted++;
-				}
+    if (this.tableSyncOperation >= this.tableDefinition.syncTable) {
+      this._syncTable();
+      this.tableSyncOperation = 0;
+    }
 
-				if (options.limit && options.limit <= deleted) {
-					endDeleted = true;
-				}
-			} catch (ex) {}
-		}
+    next();
+  }
 
-		await FSReader.close();
-		await FSReader.delete();
-		await FSWriter.close();
+  async find(options = {}) {
+    const next = await Queue.asyncPush();
+    const results = this._getCandidates(options);
+    const rows = JSON.parse(JSON.stringify(results));
+    next();
+    if (rows) {
+      return rows;
+    }
+    return [];
+  }
 
-		this.consolidateTable();
-		this.locked = false;
-		this.processQueue();
-	}
+  async count(options = {}) {
+    return (await this.find(options)).length;
+  }
 
-	async find(options = {}) {
-		if (this.locked) {
-			return this.addActionQueue("FIND", { options });
-		}
-		this.locked = true;
-		const results = [];
-
-		const FSReader = await FileSystem.CreateReader(this.getPath());
-		let line;
-		while ((line = await FSReader.readLine())) {
-			if (!line) {
-				break;
-			}
-			try {
-				let idata = JSON.parse(line);
-				if (this.verifyLineWhere(options, idata)) {
-					if (!options.limit || options.limit > results.length) {
-						results.push(idata);
-					} else {
-						break;
-					}
-				}
-			} catch (ex) {}
-		}
-		await FSReader.close();
-
-		this.locked = false;
-		this.processQueue();
-		return results;
-	}
-
-	async count(options = {}) {
-		const results = await this.find(options);
-		return results.length;
-	}
-
-	drop() {
-		fs.unlinkSync(this.getPath());
-	}
+  drop() {
+    fs.unlinkSync(this.getPath());
+  }
 }

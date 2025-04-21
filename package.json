@@ -1,31 +1,30 @@
 {
-	"name": "jsondb",
-	"version": "1.0.14",
-	"description": "",
-	"main": "src/index.js",
-	"type": "module",
-	"scripts": {
-		"test": "jest --verbose"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/zerkc/jsonDB.git"
-	},
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"bugs": {
-		"url": "https://github.com/zerkc/jsonDB/issues"
-	},
-	"homepage": "https://github.com/zerkc/jsonDB#readme",
-	"dependencies": {
-		"graceful-fs": "^4.2.11",
-		"split": "^1.0.1"
-	},
-	"devDependencies": {
-		"@babel/core": "^7.23.9",
-		"@babel/preset-env": "^7.23.9",
-		"babel-jest": "^29.7.0",
-		"jest": "^29.7.0"
-	}
+  "name": "jsondb",
+  "version": "1.0.15",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest --verbose"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zerkc/jsonDB.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/zerkc/jsonDB/issues"
+  },
+  "homepage": "https://github.com/zerkc/jsonDB#readme",
+  "dependencies": {
+    "graceful-fs": "^4.2.11",
+    "split": "^1.0.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.9",
+    "@babel/preset-env": "^7.23.9",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0"
+  }
 }

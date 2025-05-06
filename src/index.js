@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { TableController } from "./TableController.js";
-import { Queue } from "./utils/queue.js";
+import { QueueService } from "./utils/queue.js";
 
 function promisify(fun) {
   return function (...args) {
@@ -31,6 +31,7 @@ export class JSONDB {
   pathStore = "";
   tableDefinition = {};
   tableInstances = {};
+  queue = new QueueService();
 
   constructor(pathdb = "./.db/", opts = {}) {
     this.pathStore = pathdb;
@@ -39,7 +40,7 @@ export class JSONDB {
   }
 
   async _init() {
-    const next = await Queue.asyncPush();
+    const next = await this.queue.asyncPush();
     if (!(await fs.existsAsync(path.resolve(this.pathStore)))) {
       await fs.mkdirAsync(path.resolve(this.pathStore));
     }
@@ -69,7 +70,7 @@ export class JSONDB {
   }
 
   async getTable(table) {
-    const next = await Queue.asyncPush();
+    const next = await this.queue.asyncPush();
     next();
     if (this.tableInstances[table]) {
       return this.tableInstances[table];

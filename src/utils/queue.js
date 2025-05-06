@@ -1,36 +1,31 @@
-const queueList = [];
-
-let isProcessing = false;
-
-const processQueue = () => {
-  if (isProcessing || queueList.length === 0) {
-    return;
-  }
-  isProcessing = true;
-  const cb = queueList.shift();
-  cb(() => {
-    isProcessing = false;
-    processQueue();
-  });
-};
-
-const push = (cb) => {
-  if (typeof cb !== "function") {
-    throw new Error("Callback must be a function");
-  }
-  queueList.push(cb);
-  processQueue();
-};
-
-const asyncPush = () => {
-  return new Promise((resolve) => {
-    push((next) => {
-      resolve(next);
+export class QueueService {
+  queueList = [];
+  isProcessing = false;
+  processQueue = () => {
+    if (this.isProcessing || this.queueList.length === 0) {
+      return;
+    }
+    this.isProcessing = true;
+    const cb = this.queueList.shift();
+    cb(() => {
+      this.isProcessing = false;
+      this.processQueue();
     });
-  });
-};
+  };
 
-export const Queue = {
-  push,
-  asyncPush,
-};
+  push = (cb) => {
+    if (typeof cb !== "function") {
+      throw new Error("Callback must be a function");
+    }
+    this.queueList.push(cb);
+    this.processQueue();
+  };
+
+  asyncPush = () => {
+    return new Promise((resolve) => {
+      this.push((next) => {
+        resolve(next);
+      });
+    });
+  };
+}

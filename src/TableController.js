@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { FileSystem } from "./utils/FileSystem.js";
 import { deepmerge } from "./utils/deepmerge.js";
-import { Queue } from "./utils/queue.js";
+import { QueueService } from "./utils/queue.js";
 
 export class TableController {
   tableDefinition = {
@@ -24,6 +24,7 @@ export class TableController {
   tableSyncOperation = 0;
   tableSaveOperation = 0;
   updateTableDiskcb = false;
+  queue = new QueueService();
 
   constructor(pathdb, tableDescriptor = {}) {
     this.tableDefinition = deepmerge(this.tableDefinition, tableDescriptor);
@@ -92,7 +93,7 @@ export class TableController {
   }
 
   async _loadTableData() {
-    const next = await Queue.asyncPush();
+    const next = await this.queue.asyncPush();
     if (!fs.existsSync(this.getPath())) {
       next();
       return;
@@ -117,7 +118,7 @@ export class TableController {
   }
 
   async _syncTable() {
-    const next = await Queue.asyncPush();
+    const next = await this.queue.asyncPush();
     let FSWriter;
     try {
       FSWriter = await FileSystem.CreateWriter(this.getPath() + ".bk~~");
@@ -144,7 +145,7 @@ export class TableController {
   }
 
   async insert(data = {}) {
-    const next = await Queue.asyncPush();
+    const next = await this.queue.asyncPush();
     let _id = UUIDV4();
     while (!this._verifyId(_id)) {
       _id = UUIDV4();
@@ -218,7 +219,7 @@ export class TableController {
   }
 
   async update(options = {}, data = {}) {
-    const next = await Queue.asyncPush();
+    const next = await this.queue.asyncPush();
     const rows = this._getCandidates(options);
     if (rows) {
       let FSWriter;
@@ -246,7 +247,7 @@ export class TableController {
   }
 
   async remove(options = {}) {
-    const next = await Queue.asyncPush();
+    const next = await this.queue.asyncPush();
     const rows = this._getCandidates(options);
     if (rows) {
       let FSWriter;
@@ -274,7 +275,7 @@ export class TableController {
   }
 
   async find(options = {}) {
-    const next = await Queue.asyncPush();
+    const next = await this.queue.asyncPush();
     const results = this._getCandidates(options);
     const rows = JSON.parse(JSON.stringify(results));
     next();

@@ -3,7 +3,7 @@ import fs from "fs";
 export class FileSystem {
   filepath = null;
   fileDescriptor = null;
-  BUFFER_SIZE = 1024 * 500;
+  BUFFER_SIZE = 1024;
   remaining = "";
 
   constructor(filepath) {
@@ -26,7 +26,7 @@ export class FileSystem {
   }
 
   async readLine() {
-    if (this.remaining != "") {
+    /* if (this.remaining != "") {
       let lines = this.remaining.split("\n");
       const line = lines.shift();
       this.remaining = lines.join("\n");
@@ -34,7 +34,7 @@ export class FileSystem {
       if (line) {
         return line;
       }
-    }
+    }*/
     return new Promise((done, reject) => {
       let buffer = Buffer.alloc(this.BUFFER_SIZE);
       fs.read(

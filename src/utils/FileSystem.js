@@ -31,7 +31,9 @@ export class FileSystem {
       const line = lines.shift();
       this.remaining = lines.join("\n");
       console.log(line);
-      return line ? line : null;
+      if (line) {
+        return line;
+      }
     }
     return new Promise((done, reject) => {
       let buffer = Buffer.alloc(this.BUFFER_SIZE);

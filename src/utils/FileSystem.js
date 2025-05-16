@@ -18,7 +18,7 @@ export class FileSystem {
   }
 
   readLine() {
-    if (this.remaining === "" && loaded === false) {
+    if (this.remaining === "" && this.loaded === false) {
       this.loaded = true;
       this.remaining = fs.readFileSync(this.filepath, "utf8");
     }
@@ -32,10 +32,13 @@ export class FileSystem {
   }
 
   writeLine(data) {
-    fs.writeFileSync(this.filepath, `${data}\n`, {
-      flag: this.flags,
-      encoding: "utf8",
-    });
+    if (this.flags !== "a") {
+      fs.writeFileSync(this.filepath, `${data}\n`, {
+        encoding: "utf8",
+      });
+    } else {
+      fs.appendFileSync(this.filepath, `${data}\n`, { encoding: "utf8" });
+    }
   }
 
   close() {

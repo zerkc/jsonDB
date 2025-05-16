@@ -121,7 +121,7 @@ export class TableController {
     const next = await this.queue.asyncPush();
     let FSWriter;
     try {
-      FSWriter = FileSystem.CreateWriter(this.getPath() + ".bk~~");
+      FSWriter = FileSystem.CreateAppendWriter(this.getPath() + ".bk~~");
       for (const data of this.rows) {
         if (!data.$$deleted) {
           FSWriter.writeLine(JSON.stringify(data));
@@ -154,7 +154,7 @@ export class TableController {
 
     let FSWriter;
     try {
-      FSWriter = FileSystem.CreateAppendWriter(this.getPath());
+      FSWriter = FileSystem.CreateWriter(this.getPath());
       FSWriter.writeLine(JSON.stringify(data));
       FSWriter.close();
     } catch (err) {

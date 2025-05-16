@@ -35,6 +35,7 @@ export class FileSystem {
         return line;
       }
     }*/
+    csonsole.log("x");
     return new Promise((done, reject) => {
       let buffer = Buffer.alloc(this.BUFFER_SIZE);
       fs.read(
@@ -47,10 +48,12 @@ export class FileSystem {
           if (err) {
             reject(err);
           }
+          csonsole.log(".");
           if (bytesRead > 0) {
             this.remaining += buffer.toString("utf8", 0, bytesRead);
           }
 
+          csonsole.log("-");
           // Procesar línea por línea
           let lines = this.remaining.split("\n");
           const line = lines.shift();

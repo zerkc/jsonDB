@@ -125,7 +125,9 @@ export class TableController {
       FSWriter = FileSystem.CreateAppendWriter(this.getPath() + ".bk~~");
       for (const data of this.rows) {
         if (!data.$$deleted) {
-          FSWriter.writeLine(JSON.stringify(data));
+          try {
+            FSWriter.writeLine(JSON.stringify(data));
+          } catch (ex) {}
         }
       }
       FSWriter.close();
@@ -155,7 +157,7 @@ export class TableController {
 
     let FSWriter;
     try {
-      FSWriter = FileSystem.CreateWriter(this.getPath());
+      FSWriter = FileSystem.CreateAppendWriter(this.getPath());
       FSWriter.writeLine(JSON.stringify(data));
       FSWriter.close();
     } catch (err) {

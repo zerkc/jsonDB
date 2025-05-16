@@ -145,7 +145,6 @@ export class TableController {
   }
 
   async insert(data = {}) {
-    const next = await this.queue.asyncPush();
     let _id = UUIDV4();
     while (!this._verifyId(_id)) {
       _id = UUIDV4();
@@ -163,8 +162,6 @@ export class TableController {
         await FSWriter.close();
       }
     }
-
-    next();
   }
 
   _getCandidates(options) {

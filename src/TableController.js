@@ -100,9 +100,9 @@ export class TableController {
     }
 
     try {
-      const FSReader = await FileSystem.CreateReader(this.getPath());
+      const FSReader = FileSystem.CreateReader(this.getPath());
       let line;
-      while ((line = await FSReader.readLine())) {
+      while ((line = FSReader.readLine())) {
         if (!line) {
           break;
         }
@@ -111,7 +111,7 @@ export class TableController {
           this._addRow(idata);
         } catch (ex) {}
       }
-      await FSReader.close();
+      FSReader.close();
     } catch (ex) {}
 
     next();
@@ -121,13 +121,13 @@ export class TableController {
     const next = await this.queue.asyncPush();
     let FSWriter;
     try {
-      FSWriter = await FileSystem.CreateWriter(this.getPath() + ".bk~~");
+      FSWriter = FileSystem.CreateWriter(this.getPath() + ".bk~~");
       for (const data of this.rows) {
         if (!data.$$deleted) {
-          await FSWriter.writeLine(JSON.stringify(data));
+          FSWriter.writeLine(JSON.stringify(data));
         }
       }
-      await FSWriter.close();
+      FSWriter.close();
       if (fs.existsSync(this.getPath())) {
         fs.renameSync(this.getPath(), this.getPath() + ".bk~");
       }
@@ -137,7 +137,7 @@ export class TableController {
       }
     } catch (ex) {
       if (FSWriter) {
-        await FSWriter.close();
+        FSWriter.close();
       }
     }
     this.consolidateTable();
@@ -154,12 +154,12 @@ export class TableController {
 
     let FSWriter;
     try {
-      FSWriter = await FileSystem.CreateAppendWriter(this.getPath());
-      await FSWriter.writeLine(JSON.stringify(data));
-      await FSWriter.close();
+      FSWriter = FileSystem.CreateAppendWriter(this.getPath());
+      FSWriter.writeLine(JSON.stringify(data));
+      FSWriter.close();
     } catch (err) {
       if (FSWriter) {
-        await FSWriter.close();
+        FSWriter.close();
       }
     }
   }
@@ -221,16 +221,16 @@ export class TableController {
     if (rows) {
       let FSWriter;
       try {
-        FSWriter = await FileSystem.CreateAppendWriter(this.getPath());
+        FSWriter = FileSystem.CreateAppendWriter(this.getPath());
         for (const row of rows) {
           this.tableSyncOperation++;
           deepmerge(row, data);
-          await FSWriter.writeLine(JSON.stringify(row));
+          FSWriter.writeLine(JSON.stringify(row));
         }
-        await FSWriter.close();
+        FSWriter.close();
       } catch (err) {
         if (FSWriter) {
-          await FSWriter.close();
+          FSWriter.close();
         }
       }
     }
@@ -249,16 +249,16 @@ export class TableController {
     if (rows) {
       let FSWriter;
       try {
-        FSWriter = await FileSystem.CreateAppendWriter(this.getPath());
+        FSWriter = FileSystem.CreateAppendWriter(this.getPath());
         for (const row of rows) {
           this.tableSyncOperation++;
           deepmerge(row, { $$deleted: true });
-          await FSWriter.writeLine(JSON.stringify(row));
+          FSWriter.writeLine(JSON.stringify(row));
         }
-        await FSWriter.close();
+        FSWriter.close();
       } catch (err) {
         if (FSWriter) {
-          await FSWriter.close();
+          FSWriter.close();
         }
       }
     }

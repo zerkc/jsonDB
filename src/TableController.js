@@ -15,7 +15,7 @@ export class TableController {
         unique: true,
       },
     },
-    syncTable: 100000,
+    syncTable: 500,
     syncSave: 0,
   };
   pathdb = "";
@@ -78,7 +78,8 @@ export class TableController {
           this.rowsIndex[key][data[key]] = data;
         } else {
           canAdded = false;
-          deepmerge(this.rowsIndex[key][data[key]], data);
+          //deepmerge(this.rowsIndex[key][data[key]], data);
+          this.rowsIndex[key][data[key]] = data;
         }
       } else {
         if (!this.rowsIndex[key][data[key]]) {

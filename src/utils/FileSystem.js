@@ -5,6 +5,7 @@ export class FileSystem {
   remaining = "";
   loaded = false;
   flags = null;
+  lines = [];
 
   constructor(filepath) {
     this.filepath = filepath;
@@ -21,10 +22,9 @@ export class FileSystem {
     if (this.remaining === "" && this.loaded === false) {
       this.loaded = true;
       this.remaining = fs.readFileSync(this.filepath, "utf8");
+      this.lines = this.remaining.split("\n");
     }
-    let lines = this.remaining.split("\n");
-    const line = lines.shift();
-    this.remaining = lines.join("\n");
+    const line = this.lines.shift();
     if (line) {
       return line;
     }

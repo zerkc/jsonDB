@@ -20,7 +20,7 @@ test("Creacion u1", async () => {
   expect(user.username).toBe(u[0].username);
   expect(user.passwd).toBe(u[0].passwd);
 });
-/*
+
 test("Creacion u2", async () => {
   const user = { username: "b", passwd: "b" };
   await db.insert("users", { ...user });
@@ -169,7 +169,7 @@ test("delete u3", async () => {
 // 	);
 // 	fs.chmodSync(".db/", "0777");
 // });
-/*
+//
 test("all data", async () => {
   let now = new Date();
   now.setMonth(now.getMonth() - 3);
@@ -228,7 +228,6 @@ test("all data", async () => {
 
   // await db.remove("stats");
 });
-*/
 
 // async function main() {
 // 	for (let i = 0; i < 1; i++) {

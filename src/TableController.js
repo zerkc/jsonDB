@@ -239,7 +239,7 @@ export class TableController {
     }
 
     if (this.tableSyncOperation >= this.tableDefinition.syncTable) {
-      // this._syncTable();
+      this._syncTable();
       this.tableSyncOperation = 0;
     }
 
@@ -267,7 +267,7 @@ export class TableController {
     }
 
     if (this.tableSyncOperation >= this.tableDefinition.syncTable) {
-      //this._syncTable();
+      this._syncTable();
       this.tableSyncOperation = 0;
     }
 
